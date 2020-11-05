@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+
 using ICSharpCode.ILSpy.TextView;
 
 namespace ICSharpCode.ILSpy.ViewModels
@@ -28,23 +29,36 @@ namespace ICSharpCode.ILSpy.ViewModels
 	{
 		private readonly Dictionary<Language, LanguageVersion> languageVersionHistory = new Dictionary<Language, LanguageVersion>();
 
+		public TabPageModel()
+		{
+			this.Title = Properties.Resources.NewTab;
+		}
+
 		private Language language;
 		public Language Language {
 			get => language;
 			set {
-				if (language != value) {
-					if (language != null && language.HasLanguageVersions) {
+				if (language != value)
+				{
+					if (language != null && language.HasLanguageVersions)
+					{
 						languageVersionHistory[language] = languageVersion;
 					}
 					language = value;
 					RaisePropertyChanged(nameof(Language));
-					if (language.HasLanguageVersions) {
-						if (languageVersionHistory.TryGetValue(value, out var version)) {
+					if (language.HasLanguageVersions)
+					{
+						if (languageVersionHistory.TryGetValue(value, out var version))
+						{
 							LanguageVersion = version;
-						} else {
+						}
+						else
+						{
 							LanguageVersion = Language.LanguageVersions.Last();
 						}
-					} else {
+					}
+					else
+					{
 						LanguageVersion = default;
 					}
 				}
@@ -55,9 +69,11 @@ namespace ICSharpCode.ILSpy.ViewModels
 		public LanguageVersion LanguageVersion {
 			get => languageVersion;
 			set {
-				if (languageVersion != value) {
+				if (languageVersion != value)
+				{
 					languageVersion = value;
-					if (language.HasLanguageVersions) {
+					if (language.HasLanguageVersions)
+					{
 						languageVersionHistory[language] = languageVersion;
 					}
 					RaisePropertyChanged(nameof(LanguageVersion));
@@ -69,7 +85,8 @@ namespace ICSharpCode.ILSpy.ViewModels
 		public bool SupportsLanguageSwitching {
 			get => supportsLanguageSwitching;
 			set {
-				if (supportsLanguageSwitching != value) {
+				if (supportsLanguageSwitching != value)
+				{
 					supportsLanguageSwitching = value;
 					RaisePropertyChanged(nameof(SupportsLanguageSwitching));
 				}
@@ -80,7 +97,8 @@ namespace ICSharpCode.ILSpy.ViewModels
 		public object Content {
 			get => content;
 			set {
-				if (content != value) {
+				if (content != value)
+				{
 					content = value;
 					RaisePropertyChanged(nameof(Content));
 				}
@@ -97,7 +115,8 @@ namespace ICSharpCode.ILSpy.ViewModels
 	{
 		public static Task<T> ShowTextViewAsync<T>(this TabPageModel tabPage, Func<DecompilerTextView, Task<T>> action)
 		{
-			if (!(tabPage.Content is DecompilerTextView textView)) {
+			if (!(tabPage.Content is DecompilerTextView textView))
+			{
 				textView = new DecompilerTextView();
 				tabPage.Content = textView;
 			}
@@ -106,7 +125,8 @@ namespace ICSharpCode.ILSpy.ViewModels
 
 		public static Task ShowTextViewAsync(this TabPageModel tabPage, Func<DecompilerTextView, Task> action)
 		{
-			if (!(tabPage.Content is DecompilerTextView textView)) {
+			if (!(tabPage.Content is DecompilerTextView textView))
+			{
 				textView = new DecompilerTextView();
 				tabPage.Content = textView;
 			}
@@ -115,7 +135,8 @@ namespace ICSharpCode.ILSpy.ViewModels
 
 		public static void ShowTextView(this TabPageModel tabPage, Action<DecompilerTextView> action)
 		{
-			if (!(tabPage.Content is DecompilerTextView textView)) {
+			if (!(tabPage.Content is DecompilerTextView textView))
+			{
 				textView = new DecompilerTextView();
 				tabPage.Content = textView;
 			}

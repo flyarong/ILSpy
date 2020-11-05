@@ -1,11 +1,25 @@
-﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
-// This code is distributed under the MS-PL (for details please see \doc\MS-PL.txt)
+﻿// Copyright (c) 2020 AlphaSierraPapa for the SharpDevelop Team
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// software and associated documentation files (the "Software"), to deal in the Software
+// without restriction, including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+// to whom the Software is furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in all copies or
+// substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
 
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using SRM = System.Reflection.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
@@ -18,17 +32,20 @@ using ICSharpCode.Decompiler.Util;
 using ICSharpCode.ILSpy;
 using ICSharpCode.ILSpy.TextView;
 using ICSharpCode.ILSpy.TreeNodes;
-using ILSpy.BamlDecompiler.Baml;
 using ICSharpCode.ILSpy.ViewModels;
+
+using ILSpy.BamlDecompiler.Baml;
+
+using SRM = System.Reflection.Metadata;
 
 namespace ILSpy.BamlDecompiler
 {
 	public sealed class BamlResourceEntryNode : ResourceEntryNode
 	{
-		public BamlResourceEntryNode(string key, Stream data) : base(key, data)
+		public BamlResourceEntryNode(string key, Func<Stream> data) : base(key, data)
 		{
 		}
-		
+
 		public override bool View(TabPageModel tabPage)
 		{
 			IHighlightingDefinition highlighting = null;
@@ -38,10 +55,13 @@ namespace ILSpy.BamlDecompiler
 				token => Task.Factory.StartNew(
 					() => {
 						AvalonEditTextOutput output = new AvalonEditTextOutput();
-						try {
+						try
+						{
 							if (LoadBaml(output, token))
 								highlighting = HighlightingManager.Instance.GetDefinitionByExtension(".xml");
-						} catch (Exception ex) {
+						}
+						catch (Exception ex)
+						{
 							output.Write(ex.ToString());
 						}
 						return output;
@@ -50,12 +70,12 @@ namespace ILSpy.BamlDecompiler
 				.HandleExceptions());
 			return true;
 		}
-		
+
 		bool LoadBaml(AvalonEditTextOutput output, CancellationToken cancellationToken)
 		{
 			var asm = this.Ancestors().OfType<AssemblyTreeNode>().FirstOrDefault().LoadedAssembly;
-			Data.Position = 0;
-			XDocument xamlDocument = LoadIntoDocument(asm.GetPEFileOrNull(), asm.GetAssemblyResolver(), Data, cancellationToken);
+			using var data = OpenStream();
+			XDocument xamlDocument = LoadIntoDocument(asm.GetPEFileOrNull(), asm.GetAssemblyResolver(), data, cancellationToken);
 			output.Write(xamlDocument.ToString());
 			return true;
 		}
@@ -92,43 +112,55 @@ namespace ILSpy.BamlDecompiler
 				var referencedAssemblies = new List<PEFile>();
 				var assemblyReferenceQueue = new Queue<(bool IsAssembly, PEFile MainModule, object Reference)>();
 				var mainMetadata = mainModule.Metadata;
-				foreach (var h in mainMetadata.GetModuleReferences()) {
+				foreach (var h in mainMetadata.GetModuleReferences())
+				{
 					var moduleRef = mainMetadata.GetModuleReference(h);
 					var moduleName = mainMetadata.GetString(moduleRef.Name);
-					foreach (var fileHandle in mainMetadata.AssemblyFiles) {
+					foreach (var fileHandle in mainMetadata.AssemblyFiles)
+					{
 						var file = mainMetadata.GetAssemblyFile(fileHandle);
-						if (mainMetadata.StringComparer.Equals(file.Name, moduleName) && file.ContainsMetadata) {
+						if (mainMetadata.StringComparer.Equals(file.Name, moduleName) && file.ContainsMetadata)
+						{
 							assemblyReferenceQueue.Enqueue((false, mainModule, moduleName));
 							break;
 						}
 					}
 				}
-				foreach (var refs in mainModule.AssemblyReferences) {
+				foreach (var refs in mainModule.AssemblyReferences)
+				{
 					assemblyReferenceQueue.Enqueue((true, mainModule, refs));
 				}
-				foreach (var bamlReference in defaultBamlReferences) {
+				foreach (var bamlReference in defaultBamlReferences)
+				{
 					assemblyReferenceQueue.Enqueue((true, mainModule, AssemblyNameReference.Parse(bamlReference)));
 				}
 				var comparer = KeyComparer.Create(((bool IsAssembly, PEFile MainModule, object Reference) reference) =>
 					reference.IsAssembly ? "A:" + ((IAssemblyReference)reference.Reference).FullName :
 										   "M:" + reference.Reference);
 				var processedAssemblyReferences = new HashSet<(bool IsAssembly, PEFile Parent, object Reference)>(comparer);
-				while (assemblyReferenceQueue.Count > 0) {
+				while (assemblyReferenceQueue.Count > 0)
+				{
 					var asmRef = assemblyReferenceQueue.Dequeue();
 					if (!processedAssemblyReferences.Add(asmRef))
 						continue;
 					PEFile asm;
-					if (asmRef.IsAssembly) {
+					if (asmRef.IsAssembly)
+					{
 						asm = assemblyResolver.Resolve((IAssemblyReference)asmRef.Reference);
-					} else {
+					}
+					else
+					{
 						asm = assemblyResolver.ResolveModule(asmRef.MainModule, (string)asmRef.Reference);
 					}
-					if (asm != null) {
+					if (asm != null)
+					{
 						referencedAssemblies.Add(asm);
 						var metadata = asm.Metadata;
-						foreach (var h in metadata.ExportedTypes) {
+						foreach (var h in metadata.ExportedTypes)
+						{
 							var exportedType = metadata.GetExportedType(h);
-							switch (exportedType.Implementation.Kind) {
+							switch (exportedType.Implementation.Kind)
+							{
 								case SRM.HandleKind.AssemblyReference:
 									assemblyReferenceQueue.Enqueue((true, asm, new AssemblyReference(asm, (SRM.AssemblyReferenceHandle)exportedType.Implementation)));
 									break;
@@ -144,9 +176,12 @@ namespace ILSpy.BamlDecompiler
 				var referencedAssembliesWithOptions = referencedAssemblies.Select(file => file.WithOptions(TypeSystemOptions.Default));
 				// Primitive types are necessary to avoid assertions in ILReader.
 				// Fallback to MinimalCorlib to provide the primitive types.
-				if (!HasType(KnownTypeCode.Void) || !HasType(KnownTypeCode.Int32)) {
+				if (!HasType(KnownTypeCode.Void) || !HasType(KnownTypeCode.Int32))
+				{
 					Init(mainModule.WithOptions(TypeSystemOptions.Default), referencedAssembliesWithOptions.Concat(new[] { MinimalCorlib.Instance }));
-				} else {
+				}
+				else
+				{
 					Init(mainModuleWithOptions, referencedAssembliesWithOptions);
 				}
 				this.MainModule = (MetadataModule)base.MainModule;
@@ -156,7 +191,8 @@ namespace ILSpy.BamlDecompiler
 					TopLevelTypeName name = KnownTypeReference.Get(code).TypeName;
 					if (mainModule.GetTypeDefinition(name) != null)
 						return true;
-					foreach (var file in referencedAssemblies) {
+					foreach (var file in referencedAssemblies)
+					{
 						if (file.GetTypeDefinition(name) != null)
 							return true;
 					}

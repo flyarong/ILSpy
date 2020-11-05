@@ -23,6 +23,7 @@ using System.Linq;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Text;
+
 using ICSharpCode.Decompiler.CSharp;
 using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.IL;
@@ -66,7 +67,8 @@ namespace ICSharpCode.Decompiler.DebugInfo
 
 		public void GenerateImportScopes(MetadataBuilder metadata, ImportScopeHandle globalImportScope)
 		{
-			foreach (var scope in importScopes) {
+			foreach (var scope in importScopes)
+			{
 				var blob = EncodeImports(metadata, scope);
 				scope.Handle = metadata.AddImportScope(scope.Parent == null ? globalImportScope : scope.Parent.Handle, blob);
 			}
@@ -76,7 +78,8 @@ namespace ICSharpCode.Decompiler.DebugInfo
 		{
 			var writer = new BlobBuilder();
 
-			foreach (var import in scope.Imports) {
+			foreach (var import in scope.Imports)
+			{
 				writer.WriteByte((byte)ImportDefinitionKind.ImportNamespace);
 				writer.WriteCompressedInteger(MetadataTokens.GetHeapOffset(metadata.GetOrAddBlobUTF8(import)));
 			}
@@ -133,12 +136,72 @@ namespace ICSharpCode.Decompiler.DebugInfo
 			HandleMethod(anonymousMethodExpression);
 		}
 
+		public override void VisitQueryFromClause(QueryFromClause queryFromClause)
+		{
+			if (queryFromClause.Parent.FirstChild != queryFromClause)
+			{
+				HandleMethod(queryFromClause);
+			}
+			else
+			{
+				base.VisitQueryFromClause(queryFromClause);
+			}
+		}
+
+		public override void VisitQueryGroupClause(QueryGroupClause queryGroupClause)
+		{
+			var annotation = queryGroupClause.Annotation<QueryGroupClauseAnnotation>();
+			if (annotation == null)
+			{
+				base.VisitQueryGroupClause(queryGroupClause);
+				return;
+			}
+			HandleMethod(queryGroupClause.Projection, annotation.ProjectionLambda);
+			HandleMethod(queryGroupClause.Key, annotation.KeyLambda);
+		}
+
+		public override void VisitQueryJoinClause(QueryJoinClause queryJoinClause)
+		{
+			var annotation = queryJoinClause.Annotation<QueryJoinClauseAnnotation>();
+			if (annotation == null)
+			{
+				base.VisitQueryJoinClause(queryJoinClause);
+				return;
+			}
+			HandleMethod(queryJoinClause.OnExpression, annotation.OnLambda);
+			HandleMethod(queryJoinClause.EqualsExpression, annotation.EqualsLambda);
+		}
+
+		public override void VisitQueryLetClause(QueryLetClause queryLetClause)
+		{
+			HandleMethod(queryLetClause);
+		}
+
+		public override void VisitQueryOrdering(QueryOrdering queryOrdering)
+		{
+			HandleMethod(queryOrdering);
+		}
+
+		public override void VisitQuerySelectClause(QuerySelectClause querySelectClause)
+		{
+			HandleMethod(querySelectClause);
+		}
+
+		public override void VisitQueryWhereClause(QueryWhereClause queryWhereClause)
+		{
+			HandleMethod(queryWhereClause);
+		}
+
 		void HandleMethod(AstNode node)
+		{
+			HandleMethod(node, node.Annotation<ILFunction>());
+		}
+
+		void HandleMethod(AstNode node, ILFunction function)
 		{
 			// Look into method body, e.g. in order to find lambdas
 			VisitChildren(node);
 
-			var function = node.Annotation<ILFunction>();
 			if (function == null || function.Method == null || function.Method.MetadataToken.IsNil)
 				return;
 			this.functions.Add(function);
@@ -146,7 +209,8 @@ namespace ICSharpCode.Decompiler.DebugInfo
 			MethodDefinitionHandle handle = (MethodDefinitionHandle)method.MetadataToken;
 			var file = typeSystem.MainModule.PEFile;
 			MethodDefinition md = file.Metadata.GetMethodDefinition(handle);
-			if (md.HasBody()) {
+			if (md.HasBody())
+			{
 				HandleMethodBody(function, file.Reader.GetMethodBody(md.RelativeVirtualAddress));
 			}
 		}
@@ -156,14 +220,17 @@ namespace ICSharpCode.Decompiler.DebugInfo
 			var method = function.MoveNextMethod ?? function.Method;
 			var localVariables = new HashSet<ILVariable>(ILVariableKeyComparer);
 
-			if (!methodBody.LocalSignature.IsNil) {
+			if (!methodBody.LocalSignature.IsNil)
+			{
 #if DEBUG
 				var types = typeSystem.MainModule.DecodeLocalSignature(methodBody.LocalSignature,
 					new TypeSystem.GenericContext(method));
 #endif
 
-				foreach (var v in function.Variables) {
-					if (v.Index != null && v.Kind.IsLocal()) {
+				foreach (var v in function.Variables)
+				{
+					if (v.Index != null && v.Kind.IsLocal())
+					{
 #if DEBUG
 						Debug.Assert(v.Index < types.Length && v.Type.Equals(types[v.Index.Value]));
 #endif

@@ -1,5 +1,20 @@
-﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team (for details please see \doc\copyright.txt)
-// This code is distributed under the GNU LGPL (for details please see \doc\license.txt)
+﻿// Copyright (c) 2020 AlphaSierraPapa for the SharpDevelop Team
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// software and associated documentation files (the "Software"), to deal in the Software
+// without restriction, including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+// to whom the Software is furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in all copies or
+// substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
 
 using System;
 using System.Collections;
@@ -7,9 +22,11 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Xml.Linq;
+
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.Tests.Helpers;
 using ICSharpCode.Decompiler.Util;
+
 using NUnit.Framework;
 
 namespace ILSpy.BamlDecompiler.Tests
@@ -119,6 +136,12 @@ namespace ILSpy.BamlDecompiler.Tests
 			RunTest("cases/issue1547");
 		}
 
+		[Test]
+		public void Issue2097()
+		{
+			RunTest("cases/issue2097");
+		}
+
 		#region RunTest
 		void RunTest(string name)
 		{
@@ -130,7 +153,8 @@ namespace ILSpy.BamlDecompiler.Tests
 
 		void RunTest(string name, string asmPath, string sourcePath)
 		{
-			using (var fileStream = new FileStream(asmPath, FileMode.Open, FileAccess.Read)) {
+			using (var fileStream = new FileStream(asmPath, FileMode.Open, FileAccess.Read))
+			{
 				var module = new PEFile(asmPath, fileStream);
 				var resolver = new UniversalAssemblyResolver(asmPath, false, module.Reader.DetectTargetFrameworkId());
 				resolver.RemoveSearchDirectory(".");
@@ -147,7 +171,8 @@ namespace ILSpy.BamlDecompiler.Tests
 		void XamlIsEqual(string input1, string input2)
 		{
 			var diff = new StringWriter();
-			if (!CodeComparer.Compare(input1, input2, diff, NormalizeLine)) {
+			if (!CodeComparer.Compare(input1, input2, diff, NormalizeLine))
+			{
 				Assert.Fail(diff.ToString());
 			}
 		}
@@ -159,18 +184,25 @@ namespace ILSpy.BamlDecompiler.Tests
 
 		Stream LoadBaml(Resource res, string name)
 		{
-			if (res.ResourceType != ResourceType.Embedded) return null;
+			if (res.ResourceType != ResourceType.Embedded)
+				return null;
 			Stream s = res.TryOpenStream();
-			if (s == null) return null;
+			if (s == null)
+				return null;
 			s.Position = 0;
 			ResourcesFile resources;
-			try {
+			try
+			{
 				resources = new ResourcesFile(s);
-			} catch (ArgumentException) {
+			}
+			catch (ArgumentException)
+			{
 				return null;
 			}
-			foreach (var entry in resources.OrderBy(e => e.Key)) {
-				if (entry.Key == name) {
+			foreach (var entry in resources.OrderBy(e => e.Key))
+			{
+				if (entry.Key == name)
+				{
 					if (entry.Value is Stream)
 						return (Stream)entry.Value;
 					if (entry.Value is byte[])

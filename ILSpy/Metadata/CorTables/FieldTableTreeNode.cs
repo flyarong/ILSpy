@@ -24,6 +24,7 @@ using System.Reflection.Metadata.Ecma335;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
+
 using ICSharpCode.Decompiler;
 using ICSharpCode.Decompiler.Disassembler;
 using ICSharpCode.Decompiler.IL;
@@ -55,9 +56,11 @@ namespace ICSharpCode.ILSpy.Metadata
 
 			FieldDefEntry scrollTargetEntry = default;
 
-			foreach (var row in metadata.FieldDefinitions) {
+			foreach (var row in metadata.FieldDefinitions)
+			{
 				var entry = new FieldDefEntry(module, row);
-				if (scrollTarget == entry.RID) {
+				if (scrollTarget == entry.RID)
+				{
 					scrollTargetEntry = entry;
 				}
 				list.Add(entry);
@@ -67,7 +70,8 @@ namespace ICSharpCode.ILSpy.Metadata
 
 			tabPage.Content = view;
 
-			if (scrollTargetEntry.RID > 0) {
+			if (scrollTargetEntry.RID > 0)
+			{
 				ScrollItemIntoView(view, scrollTargetEntry);
 			}
 
@@ -104,7 +108,7 @@ namespace ICSharpCode.ILSpy.Metadata
 
 			public string NameTooltip => $"{MetadataTokens.GetHeapOffset(fieldDef.Name):X} \"{Name}\"";
 
-			IEntity IMemberTreeNode.Member => ((MetadataModule)module.GetTypeSystemOrNull()?.MainModule).GetDefinition(handle);
+			IEntity IMemberTreeNode.Member => ((MetadataModule)module.GetTypeSystemWithCurrentOptionsOrNull()?.MainModule).GetDefinition(handle);
 
 			[StringFormat("X")]
 			public int Signature => MetadataTokens.GetHeapOffset(fieldDef.Signature);

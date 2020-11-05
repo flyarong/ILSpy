@@ -17,16 +17,17 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System.Linq;
+using System.Threading;
+
 using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.ILSpy.Properties;
 using ICSharpCode.ILSpy.TreeNodes;
-using System.Threading;
 namespace ICSharpCode.ILSpy
 {
 	[ExportContextMenuEntry(Header = nameof(Resources.SearchMSDN), Icon = "images/SearchMsdn", Order = 9999)]
 	internal sealed class SearchMsdnContextMenuEntry : IContextMenuEntry
 	{
-		private static string msdnAddress = "http://msdn.microsoft.com/{1}/library/{0}";
+		private static string msdnAddress = "https://docs.microsoft.com/dotnet/api/{0}";
 
 		public bool IsVisible(TextViewContext context)
 		{
@@ -75,7 +76,8 @@ namespace ICSharpCode.ILSpy
 		{
 			if (entity.DeclaringTypeDefinition == null)
 				return false;
-			switch (entity.DeclaringTypeDefinition.Accessibility) {
+			switch (entity.DeclaringTypeDefinition.Accessibility)
+			{
 				case Accessibility.Public:
 				case Accessibility.Protected:
 				case Accessibility.ProtectedOrInternal:
@@ -87,8 +89,10 @@ namespace ICSharpCode.ILSpy
 
 		public void Execute(TextViewContext context)
 		{
-			if (context.SelectedTreeNodes != null) {
-				foreach (ILSpyTreeNode node in context.SelectedTreeNodes) {
+			if (context.SelectedTreeNodes != null)
+			{
+				foreach (ILSpyTreeNode node in context.SelectedTreeNodes)
+				{
 					SearchMsdn(node);
 				}
 			}
@@ -100,9 +104,10 @@ namespace ICSharpCode.ILSpy
 
 			var namespaceNode = node as NamespaceTreeNode;
 			if (namespaceNode != null)
-				address = string.Format(msdnAddress, namespaceNode.Name,  Thread.CurrentThread.CurrentUICulture.Name);
+				address = string.Format(msdnAddress, namespaceNode.Name);
 
-			if (node is IMemberTreeNode memberNode) {
+			if (node is IMemberTreeNode memberNode)
+			{
 				var member = memberNode.Member;
 				var memberName = string.Empty;
 
@@ -111,7 +116,7 @@ namespace ICSharpCode.ILSpy
 				else
 					memberName = string.Format("{0}.{1}", member.DeclaringType.FullName, member.Name);
 
-				address = string.Format(msdnAddress, memberName, Thread.CurrentThread.CurrentUICulture.Name);
+				address = string.Format(msdnAddress, memberName);
 			}
 
 			address = address.ToLower();

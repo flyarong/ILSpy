@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Threading;
+
 using ICSharpCode.Decompiler.CSharp.TypeSystem;
 using ICSharpCode.Decompiler.DebugInfo;
 using ICSharpCode.Decompiler.TypeSystem;
@@ -50,7 +51,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		public Metadata.PEFile PEFile => TypeSystem.MainModule.PEFile;
 
 		internal DecompileRun DecompileRun { get; set; }
-		internal ResolvedUsingScope UsingScope => DecompileRun.UsingScope.Resolve(TypeSystem);
+		internal ResolvedUsingScope UsingScope => DecompileRun?.UsingScope.Resolve(TypeSystem);
 
 		public ILTransformContext(ILFunction function, IDecompilerTypeSystem typeSystem, IDebugInfoProvider debugInfo, DecompilerSettings settings = null)
 		{
@@ -92,7 +93,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		{
 			Stepper.Step(description, near);
 		}
-		
+
 		[Conditional("STEP")]
 		internal void StepStartGroup(string description, ILInstruction near = null)
 		{

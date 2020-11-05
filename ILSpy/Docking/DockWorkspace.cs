@@ -22,19 +22,22 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.ComponentModel.Composition;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Threading;
+
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.ILSpy.TextView;
 using ICSharpCode.ILSpy.ViewModels;
+
 using Xceed.Wpf.AvalonDock.Layout;
 using Xceed.Wpf.AvalonDock.Layout.Serialization;
 
 namespace ICSharpCode.ILSpy.Docking
 {
-	public class DockWorkspace : INotifyPropertyChanged
+	public class DockWorkspace : INotifyPropertyChanged, ILayoutUpdateStrategy
 	{
 		private SessionSettings sessionSettings;
 
@@ -51,28 +54,25 @@ namespace ICSharpCode.ILSpy.Docking
 		{
 			var collection = (PaneCollection<TabPageModel>)sender;
 			bool canClose = collection.Count > 1;
-			foreach (var item in collection) {
+			foreach (var item in collection)
+			{
 				item.IsCloseable = canClose;
 			}
 		}
 
 		public PaneCollection<TabPageModel> TabPages { get; } = new PaneCollection<TabPageModel>();
 
-		private ToolPaneModel[] toolPanes;
-		public IEnumerable<ToolPaneModel> ToolPanes {
-			get {
-				if (toolPanes == null) {
-					toolPanes = new ToolPaneModel[] {
-						AssemblyListPaneModel.Instance,
-						SearchPaneModel.Instance,
-						AnalyzerPaneModel.Instance,
-#if DEBUG
-						DebugStepsPaneModel.Instance,
-#endif
-					};
-				}
-				return toolPanes;
+		public ObservableCollection<ToolPaneModel> ToolPanes { get; } = new ObservableCollection<ToolPaneModel>();
+
+		public bool ShowToolPane(string contentId)
+		{
+			var pane = ToolPanes.FirstOrDefault(p => p.ContentId == contentId);
+			if (pane != null)
+			{
+				pane.Show();
+				return true;
 			}
+			return false;
 		}
 
 		public void Remove(PaneModel model)
@@ -89,7 +89,8 @@ namespace ICSharpCode.ILSpy.Docking
 				return _activeTabPage;
 			}
 			set {
-				if (_activeTabPage != value) {
+				if (_activeTabPage != value)
+				{
 					_activeTabPage = value;
 					this.sessionSettings.FilterSettings.Language = value.Language;
 					this.sessionSettings.FilterSettings.LanguageVersion = value.LanguageVersion;
@@ -103,40 +104,29 @@ namespace ICSharpCode.ILSpy.Docking
 
 		public void InitializeLayout(Xceed.Wpf.AvalonDock.DockingManager manager)
 		{
+			manager.LayoutUpdateStrategy = this;
 			XmlLayoutSerializer serializer = new XmlLayoutSerializer(manager);
 			serializer.LayoutSerializationCallback += LayoutSerializationCallback;
-			try {
+			try
+			{
 				sessionSettings.DockLayout.Deserialize(serializer);
-			} finally {
+			}
+			finally
+			{
 				serializer.LayoutSerializationCallback -= LayoutSerializationCallback;
 			}
 		}
 
 		void LayoutSerializationCallback(object sender, LayoutSerializationCallbackEventArgs e)
 		{
-			switch (e.Model) {
+			switch (e.Model)
+			{
 				case LayoutAnchorable la:
-					switch (la.ContentId) {
-						case AssemblyListPaneModel.PaneContentId:
-							e.Content = AssemblyListPaneModel.Instance;
-							break;
-						case SearchPaneModel.PaneContentId:
-							e.Content = SearchPaneModel.Instance;
-							break;
-						case AnalyzerPaneModel.PaneContentId:
-							e.Content = AnalyzerPaneModel.Instance;
-							break;
-#if DEBUG
-						case DebugStepsPaneModel.PaneContentId:
-							e.Content = DebugStepsPaneModel.Instance;
-							break;
-#endif
-						default:
-							e.Cancel = true;
-							break;
-					}
+					e.Content = ToolPanes.FirstOrDefault(p => p.ContentId == la.ContentId);
+					e.Cancel = e.Content == null;
 					la.CanDockAsTabbedDocument = false;
-					if (!e.Cancel) {
+					if (!e.Cancel)
+					{
 						e.Cancel = ((ToolPaneModel)e.Content).IsVisible;
 						((ToolPaneModel)e.Content).IsVisible = true;
 					}
@@ -175,19 +165,24 @@ namespace ICSharpCode.ILSpy.Docking
 
 		private void FilterSettings_PropertyChanged(object sender, PropertyChangedEventArgs e)
 		{
-			if (e.PropertyName == "Language") {
+			if (e.PropertyName == "Language")
+			{
 				ActiveTabPage.Language = sessionSettings.FilterSettings.Language;
-				if (sessionSettings.FilterSettings.Language.HasLanguageVersions) {
+				if (sessionSettings.FilterSettings.Language.HasLanguageVersions)
+				{
 					sessionSettings.FilterSettings.LanguageVersion = ActiveTabPage.LanguageVersion;
 				}
-			} else if (e.PropertyName == "LanguageVersion") {
+			}
+			else if (e.PropertyName == "LanguageVersion")
+			{
 				ActiveTabPage.LanguageVersion = sessionSettings.FilterSettings.LanguageVersion;
 			}
 		}
 
 		internal void CloseAllTabs()
 		{
-			foreach (var doc in TabPages.ToArray()) {
+			foreach (var doc in TabPages.ToArray())
+			{
 				if (doc.IsCloseable)
 					TabPages.Remove(doc);
 			}
@@ -195,13 +190,60 @@ namespace ICSharpCode.ILSpy.Docking
 
 		internal void ResetLayout()
 		{
-			foreach (var pane in ToolPanes) {
+			foreach (var pane in ToolPanes)
+			{
 				pane.IsVisible = false;
 			}
 			CloseAllTabs();
 			sessionSettings.DockLayout.Reset();
 			InitializeLayout(MainWindow.Instance.DockManager);
 			MainWindow.Instance.Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)MainWindow.Instance.RefreshDecompiledView);
+		}
+
+		static readonly PropertyInfo previousContainerProperty = typeof(LayoutContent).GetProperty("PreviousContainer", BindingFlags.NonPublic | BindingFlags.Instance);
+
+		public bool BeforeInsertAnchorable(LayoutRoot layout, LayoutAnchorable anchorableToShow, ILayoutContainer destinationContainer)
+		{
+			if (!(anchorableToShow.Content is LegacyToolPaneModel legacyContent))
+				return false;
+			anchorableToShow.CanDockAsTabbedDocument = false;
+
+			LayoutAnchorablePane previousContainer;
+			switch (legacyContent.Location)
+			{
+				case LegacyToolPaneLocation.Top:
+					previousContainer = GetContainer<SearchPaneModel>();
+					previousContainer.Children.Add(anchorableToShow);
+					return true;
+				case LegacyToolPaneLocation.Bottom:
+					previousContainer = GetContainer<AnalyzerPaneModel>();
+					previousContainer.Children.Add(anchorableToShow);
+					return true;
+				default:
+					return false;
+			}
+
+			LayoutAnchorablePane GetContainer<T>()
+			{
+				var anchorable = layout.Descendents().OfType<LayoutAnchorable>().FirstOrDefault(x => x.Content is T)
+					?? layout.Hidden.First(x => x.Content is T);
+				return (LayoutAnchorablePane)previousContainerProperty.GetValue(anchorable) ?? (LayoutAnchorablePane)anchorable.Parent;
+			}
+		}
+
+		public void AfterInsertAnchorable(LayoutRoot layout, LayoutAnchorable anchorableShown)
+		{
+			anchorableShown.IsActive = true;
+			anchorableShown.IsSelected = true;
+		}
+
+		public bool BeforeInsertDocument(LayoutRoot layout, LayoutDocument anchorableToShow, ILayoutContainer destinationContainer)
+		{
+			return false;
+		}
+
+		public void AfterInsertDocument(LayoutRoot layout, LayoutDocument anchorableShown)
+		{
 		}
 	}
 }

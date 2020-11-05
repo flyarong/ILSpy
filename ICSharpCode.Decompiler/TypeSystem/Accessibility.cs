@@ -17,6 +17,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System.Diagnostics;
+
 using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.TypeSystem
@@ -87,12 +88,16 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// </summary>
 		public static Accessibility Intersect(this Accessibility a, Accessibility b)
 		{
-			if (a > b) {
+			if (a > b)
+			{
 				ExtensionMethods.Swap(ref a, ref b);
 			}
-			if (a == Accessibility.Protected && b == Accessibility.Internal) {
+			if (a == Accessibility.Protected && b == Accessibility.Internal)
+			{
 				return Accessibility.ProtectedAndInternal;
-			} else {
+			}
+			else
+			{
 				Debug.Assert(!(a == Accessibility.Internal && b == Accessibility.Protected));
 				return a;
 			}
@@ -105,15 +110,33 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// </summary>
 		public static Accessibility Union(this Accessibility a, Accessibility b)
 		{
-			if (a > b) {
+			if (a > b)
+			{
 				ExtensionMethods.Swap(ref a, ref b);
 			}
-			if (a == Accessibility.Protected && b == Accessibility.Internal) {
+			if (a == Accessibility.Protected && b == Accessibility.Internal)
+			{
 				return Accessibility.ProtectedOrInternal;
-			} else {
+			}
+			else
+			{
 				Debug.Assert(!(a == Accessibility.Internal && b == Accessibility.Protected));
 				return b;
 			}
+		}
+
+		/// <summary>
+		/// Gets the effective accessibility of the entity.
+		/// For example, a public method in an internal class returns "internal".
+		/// </summary>
+		public static Accessibility EffectiveAccessibility(this IEntity entity)
+		{
+			Accessibility accessibility = entity.Accessibility;
+			for (ITypeDefinition typeDef = entity.DeclaringTypeDefinition; typeDef != null; typeDef = typeDef.DeclaringTypeDefinition)
+			{
+				accessibility = Intersect(accessibility, typeDef.Accessibility);
+			}
+			return accessibility;
 		}
 	}
 }

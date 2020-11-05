@@ -26,6 +26,7 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
+
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.ILSpy.Controls;
 
@@ -95,7 +96,11 @@ namespace ICSharpCode.ILSpy
 			}
 
 			public string Culture {
-				get { return r.Culture; }
+				get {
+					if (string.IsNullOrEmpty(r.Culture))
+						return "neutral";
+					return r.Culture;
+				}
 			}
 
 			public string PublicKeyToken {
@@ -116,21 +121,24 @@ namespace ICSharpCode.ILSpy
 		void FetchGacContents()
 		{
 			HashSet<string> fullNames = new HashSet<string>();
-			UpdateProgressBar(pg => { pg.Visibility = System.Windows.Visibility.Visible; pg.IsIndeterminate = true; });
-			var list = GacInterop.GetGacAssemblyFullNames().TakeWhile(_ => !cancelFetchThread).ToList();
+			UpdateProgressBar(pg => { pg.Visibility = Visibility.Visible; pg.IsIndeterminate = true; });
+			var list = UniversalAssemblyResolver.EnumerateGac().TakeWhile(_ => !cancelFetchThread).ToList();
 			UpdateProgressBar(pg => { pg.IsIndeterminate = false; pg.Maximum = list.Count; });
-			foreach (var r in list) {
+			foreach (var r in list)
+			{
 				if (cancelFetchThread)
 					break;
-				if (fullNames.Add(r.FullName)) { // filter duplicates
-					var file = GacInterop.FindAssemblyInNetGac(r);
-					if (file != null) {
+				if (fullNames.Add(r.FullName))
+				{ // filter duplicates
+					var file = UniversalAssemblyResolver.GetAssemblyInGac(r);
+					if (file != null)
+					{
 						var entry = new GacEntry(r, file);
-						UpdateProgressBar(pg => { pg.Value = pg.Value + 1; AddNewEntry(entry); });
+						UpdateProgressBar(pg => { pg.Value++; AddNewEntry(entry); });
 					}
 				}
 			}
-			UpdateProgressBar(pg => { pg.Visibility = System.Windows.Visibility.Hidden; });
+			UpdateProgressBar(pg => { pg.Visibility = Visibility.Hidden; });
 		}
 
 		void UpdateProgressBar(Action<ProgressBar> updateAction)
@@ -151,7 +159,8 @@ namespace ICSharpCode.ILSpy
 			string filterString = filterTextBox.Text.Trim();
 			if (filterString.Length == 0)
 				filterMethod = _ => true;
-			else {
+			else
+			{
 				var elements = filterString.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
 				filterMethod = entry => elements.All(el => Contains(entry.FullName, el) || Contains(entry.FormattedVersion, el));
 			}

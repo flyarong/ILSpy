@@ -74,6 +74,17 @@ namespace ICSharpCode.Decompiler.Tests.Pretty
 			{
 
 			}
+
+			public string ThisQualifierWithCast()
+			{
+				return ((object)this).ToString();
+			}
+
+			public override string ToString()
+			{
+				// decompiled as return ((ValueType)this).ToString();
+				return base.ToString();
+			}
 		}
 
 		internal class Parent
@@ -253,7 +264,8 @@ namespace ICSharpCode.Decompiler.Tests.Pretty
 
 		private void LocalConflictsWithTypeName()
 		{
-			for (int i = 0; i < 10; i++) {
+			for (int i = 0; i < 10; i++)
+			{
 				QualifierTests.i.Test();
 			}
 		}

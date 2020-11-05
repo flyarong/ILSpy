@@ -44,15 +44,21 @@ namespace ICSharpCode.Decompiler.IL
 		{
 			if (MatchLdcI8(out val))
 				return true;
-			if (MatchLdcI4(out int intVal)) {
+			if (MatchLdcI4(out int intVal))
+			{
 				val = intVal;
 				return true;
 			}
-			if (this is Conv conv) {
-				if (conv.Kind == ConversionKind.SignExtend) {
+			if (this is Conv conv)
+			{
+				if (conv.Kind == ConversionKind.SignExtend)
+				{
 					return conv.Argument.MatchLdcI(out val);
-				} else if (conv.Kind == ConversionKind.ZeroExtend && conv.InputType == StackType.I4) {
-					if (conv.Argument.MatchLdcI(out val)) {
+				}
+				else if (conv.Kind == ConversionKind.ZeroExtend && conv.InputType == StackType.I4)
+				{
+					if (conv.Argument.MatchLdcI(out val))
+					{
 						// clear top 32 bits
 						val &= uint.MaxValue;
 						return true;
@@ -72,7 +78,7 @@ namespace ICSharpCode.Decompiler.IL
 			var inst = this as LdLoc;
 			return inst != null && inst.Variable == variable;
 		}
-		
+
 		public bool MatchLdLoca(ILVariable variable)
 		{
 			var inst = this as LdLoca;
@@ -92,7 +98,8 @@ namespace ICSharpCode.Decompiler.IL
 		/// </summary>
 		public bool MatchLdLocRef(out ILVariable variable)
 		{
-			switch (this) {
+			switch (this)
+			{
 				case LdLoc ldloc:
 					variable = ldloc.Variable;
 					return variable.Type.IsReferenceType == true;
@@ -110,33 +117,36 @@ namespace ICSharpCode.Decompiler.IL
 			var inst = this as LdLoc;
 			return inst != null && inst.Variable.Kind == VariableKind.Parameter && inst.Variable.Index < 0;
 		}
-		
+
 		public bool MatchStLoc(out ILVariable variable)
 		{
 			var inst = this as StLoc;
-			if (inst != null) {
+			if (inst != null)
+			{
 				variable = inst.Variable;
 				return true;
 			}
 			variable = null;
 			return false;
 		}
-		
+
 		public bool MatchStLoc(ILVariable variable, out ILInstruction value)
 		{
 			var inst = this as StLoc;
-			if (inst != null && inst.Variable == variable) {
+			if (inst != null && inst.Variable == variable)
+			{
 				value = inst.Value;
 				return true;
 			}
 			value = null;
 			return false;
 		}
-		
+
 		public bool MatchLdLen(StackType type, out ILInstruction array)
 		{
 			var inst = this as LdLen;
-			if (inst != null && inst.ResultType == type) {
+			if (inst != null && inst.ResultType == type)
+			{
 				array = inst.Array;
 				return true;
 			}
@@ -147,7 +157,8 @@ namespace ICSharpCode.Decompiler.IL
 		public bool MatchReturn(out ILInstruction value)
 		{
 			var inst = this as Leave;
-			if (inst != null && inst.IsLeavingFunction) {
+			if (inst != null && inst.IsLeavingFunction)
+			{
 				value = inst.Value;
 				return true;
 			}
@@ -158,14 +169,15 @@ namespace ICSharpCode.Decompiler.IL
 		public bool MatchBranch(out Block targetBlock)
 		{
 			var inst = this as Branch;
-			if (inst != null) {
+			if (inst != null)
+			{
 				targetBlock = inst.TargetBlock;
 				return true;
 			}
 			targetBlock = null;
 			return false;
 		}
-		
+
 		public bool MatchBranch(Block targetBlock)
 		{
 			var inst = this as Branch;
@@ -175,7 +187,8 @@ namespace ICSharpCode.Decompiler.IL
 		public bool MatchLeave(out BlockContainer targetContainer, out ILInstruction value)
 		{
 			var inst = this as Leave;
-			if (inst != null) {
+			if (inst != null)
+			{
 				targetContainer = inst.TargetContainer;
 				value = inst.Value;
 				return true;
@@ -188,7 +201,8 @@ namespace ICSharpCode.Decompiler.IL
 		public bool MatchLeave(BlockContainer targetContainer, out ILInstruction value)
 		{
 			var inst = this as Leave;
-			if (inst != null && targetContainer == inst.TargetContainer) {
+			if (inst != null && targetContainer == inst.TargetContainer)
+			{
 				value = inst.Value;
 				return true;
 			}
@@ -199,24 +213,26 @@ namespace ICSharpCode.Decompiler.IL
 		public bool MatchLeave(out BlockContainer targetContainer)
 		{
 			var inst = this as Leave;
-			if (inst != null && inst.Value.MatchNop()) {
+			if (inst != null && inst.Value.MatchNop())
+			{
 				targetContainer = inst.TargetContainer;
 				return true;
 			}
 			targetContainer = null;
 			return false;
 		}
-		
+
 		public bool MatchLeave(BlockContainer targetContainer)
 		{
 			var inst = this as Leave;
 			return inst != null && inst.TargetContainer == targetContainer && inst.Value.MatchNop();
 		}
-		
+
 		public bool MatchIfInstruction(out ILInstruction condition, out ILInstruction trueInst, out ILInstruction falseInst)
 		{
 			var inst = this as IfInstruction;
-			if (inst != null) {
+			if (inst != null)
+			{
 				condition = inst.Condition;
 				trueInst = inst.TrueInst;
 				falseInst = inst.FalseInst;
@@ -230,9 +246,11 @@ namespace ICSharpCode.Decompiler.IL
 
 		public bool MatchIfInstructionPositiveCondition(out ILInstruction condition, out ILInstruction trueInst, out ILInstruction falseInst)
 		{
-			if (MatchIfInstruction(out condition, out trueInst, out falseInst)) {
+			if (MatchIfInstruction(out condition, out trueInst, out falseInst))
+			{
 				// Swap trueInst<>falseInst for every logic.not in the condition.
-				while (condition.MatchLogicNot(out var arg)) {
+				while (condition.MatchLogicNot(out var arg))
+				{
 					condition = arg;
 					ILInstruction tmp = trueInst;
 					trueInst = falseInst;
@@ -249,7 +267,8 @@ namespace ICSharpCode.Decompiler.IL
 		public bool MatchIfInstruction(out ILInstruction condition, out ILInstruction trueInst)
 		{
 			var inst = this as IfInstruction;
-			if (inst != null && inst.FalseInst.MatchNop()) {
+			if (inst != null && inst.FalseInst.MatchNop())
+			{
 				condition = inst.Condition;
 				trueInst = inst.TrueInst;
 				return true;
@@ -267,7 +286,8 @@ namespace ICSharpCode.Decompiler.IL
 		public bool MatchLogicAnd(out ILInstruction lhs, out ILInstruction rhs)
 		{
 			var inst = this as IfInstruction;
-			if (inst != null && inst.FalseInst.MatchLdcI4(0)) {
+			if (inst != null && inst.FalseInst.MatchLdcI4(0))
+			{
 				lhs = inst.Condition;
 				rhs = inst.TrueInst;
 				return true;
@@ -285,7 +305,8 @@ namespace ICSharpCode.Decompiler.IL
 		public bool MatchLogicOr(out ILInstruction lhs, out ILInstruction rhs)
 		{
 			var inst = this as IfInstruction;
-			if (inst != null && inst.TrueInst.MatchLdcI4(1)) {
+			if (inst != null && inst.TrueInst.MatchLdcI4(1))
+			{
 				lhs = inst.Condition;
 				rhs = inst.FalseInst;
 				return true;
@@ -314,14 +335,15 @@ namespace ICSharpCode.Decompiler.IL
 		public bool MatchTryCatchHandler(out ILVariable variable)
 		{
 			var inst = this as TryCatchHandler;
-			if (inst != null) {
+			if (inst != null)
+			{
 				variable = inst.Variable;
 				return true;
 			}
 			variable = null;
 			return false;
 		}
-		
+
 		/// <summary>
 		/// Matches comp(left == right) or logic.not(comp(left != right)).
 		/// </summary>
@@ -329,18 +351,22 @@ namespace ICSharpCode.Decompiler.IL
 		{
 			ILInstruction thisInst = this;
 			var compKind = ComparisonKind.Equality;
-			while (thisInst.MatchLogicNot(out var arg) && arg is Comp) {
+			while (thisInst.MatchLogicNot(out var arg) && arg is Comp)
+			{
 				thisInst = arg;
 				if (compKind == ComparisonKind.Equality)
 					compKind = ComparisonKind.Inequality;
 				else
 					compKind = ComparisonKind.Equality;
 			}
-			if (thisInst is Comp comp && comp.Kind == compKind && !comp.IsLifted) {
+			if (thisInst is Comp comp && comp.Kind == compKind && !comp.IsLifted)
+			{
 				left = comp.Left;
 				right = comp.Right;
 				return true;
-			} else {
+			}
+			else
+			{
 				left = null;
 				right = null;
 				return false;
@@ -352,17 +378,23 @@ namespace ICSharpCode.Decompiler.IL
 		/// </summary>
 		public bool MatchCompEqualsNull(out ILInstruction arg)
 		{
-			if (!MatchCompEquals(out var left, out var right)) {
+			if (!MatchCompEquals(out var left, out var right))
+			{
 				arg = null;
 				return false;
 			}
-			if (right.MatchLdNull()) {
+			if (right.MatchLdNull())
+			{
 				arg = left;
 				return true;
-			} else if (left.MatchLdNull()) {
+			}
+			else if (left.MatchLdNull())
+			{
 				arg = right;
 				return true;
-			} else {
+			}
+			else
+			{
 				arg = null;
 				return false;
 			}
@@ -373,17 +405,23 @@ namespace ICSharpCode.Decompiler.IL
 		/// </summary>
 		public bool MatchCompNotEqualsNull(out ILInstruction arg)
 		{
-			if (!MatchCompNotEquals(out var left, out var right)) {
+			if (!MatchCompNotEquals(out var left, out var right))
+			{
 				arg = null;
 				return false;
 			}
-			if (right.MatchLdNull()) {
+			if (right.MatchLdNull())
+			{
 				arg = left;
 				return true;
-			} else if (left.MatchLdNull()) {
+			}
+			else if (left.MatchLdNull())
+			{
 				arg = right;
 				return true;
-			} else {
+			}
+			else
+			{
 				arg = null;
 				return false;
 			}
@@ -396,18 +434,22 @@ namespace ICSharpCode.Decompiler.IL
 		{
 			ILInstruction thisInst = this;
 			var compKind = ComparisonKind.Inequality;
-			while (thisInst.MatchLogicNot(out var arg) && arg is Comp) {
+			while (thisInst.MatchLogicNot(out var arg) && arg is Comp)
+			{
 				thisInst = arg;
 				if (compKind == ComparisonKind.Equality)
 					compKind = ComparisonKind.Inequality;
 				else
 					compKind = ComparisonKind.Equality;
 			}
-			if (thisInst is Comp comp && comp.Kind == compKind && !comp.IsLifted) {
+			if (thisInst is Comp comp && comp.Kind == compKind && !comp.IsLifted)
+			{
 				left = comp.Left;
 				right = comp.Right;
 				return true;
-			} else {
+			}
+			else
+			{
 				left = null;
 				right = null;
 				return false;
@@ -416,9 +458,11 @@ namespace ICSharpCode.Decompiler.IL
 
 		public bool MatchLdFld(out ILInstruction target, out IField field)
 		{
-			if (this is LdObj ldobj && ldobj.Target is LdFlda ldflda && ldobj.UnalignedPrefix == 0 && !ldobj.IsVolatile) {
+			if (this is LdObj ldobj && ldobj.Target is LdFlda ldflda && ldobj.UnalignedPrefix == 0 && !ldobj.IsVolatile)
+			{
 				field = ldflda.Field;
-				if (field.DeclaringType.IsReferenceType == true || !ldflda.Target.MatchAddressOf(out target, out _)) {
+				if (field.DeclaringType.IsReferenceType == true || !ldflda.Target.MatchAddressOf(out target, out _))
+				{
 					target = ldflda.Target;
 				}
 				return true;
@@ -427,10 +471,11 @@ namespace ICSharpCode.Decompiler.IL
 			field = null;
 			return false;
 		}
-		
+
 		public bool MatchLdsFld(out IField field)
 		{
-			if (this is LdObj ldobj && ldobj.Target is LdsFlda ldsflda && ldobj.UnalignedPrefix == 0 && !ldobj.IsVolatile) {
+			if (this is LdObj ldobj && ldobj.Target is LdsFlda ldsflda && ldobj.UnalignedPrefix == 0 && !ldobj.IsVolatile)
+			{
 				field = ldsflda.Field;
 				return true;
 			}
@@ -445,7 +490,8 @@ namespace ICSharpCode.Decompiler.IL
 
 		public bool MatchStsFld(out IField field, out ILInstruction value)
 		{
-			if (this is StObj stobj && stobj.Target is LdsFlda ldsflda && stobj.UnalignedPrefix == 0 && !stobj.IsVolatile) {
+			if (this is StObj stobj && stobj.Target is LdsFlda ldsflda && stobj.UnalignedPrefix == 0 && !stobj.IsVolatile)
+			{
 				field = ldsflda.Field;
 				value = stobj.Value;
 				return true;
@@ -457,7 +503,8 @@ namespace ICSharpCode.Decompiler.IL
 
 		public bool MatchStFld(out ILInstruction target, out IField field, out ILInstruction value)
 		{
-			if (this is StObj stobj && stobj.Target is LdFlda ldflda && stobj.UnalignedPrefix == 0 && !stobj.IsVolatile) {
+			if (this is StObj stobj && stobj.Target is LdFlda ldflda && stobj.UnalignedPrefix == 0 && !stobj.IsVolatile)
+			{
 				target = ldflda.Target;
 				field = ldflda.Field;
 				value = stobj.Value;
@@ -468,17 +515,18 @@ namespace ICSharpCode.Decompiler.IL
 			value = null;
 			return false;
 		}
-		
+
 		public bool MatchBinaryNumericInstruction(BinaryNumericOperator @operator)
 		{
 			var op = this as BinaryNumericInstruction;
 			return op != null && op.Operator == @operator;
 		}
-		
+
 		public bool MatchBinaryNumericInstruction(BinaryNumericOperator @operator, out ILInstruction left, out ILInstruction right)
 		{
 			var op = this as BinaryNumericInstruction;
-			if (op != null && op.Operator == @operator) {
+			if (op != null && op.Operator == @operator)
+			{
 				left = op.Left;
 				right = op.Right;
 				return true;
@@ -487,11 +535,12 @@ namespace ICSharpCode.Decompiler.IL
 			right = null;
 			return false;
 		}
-		
+
 		public bool MatchBinaryNumericInstruction(out BinaryNumericOperator @operator, out ILInstruction left, out ILInstruction right)
 		{
 			var op = this as BinaryNumericInstruction;
-			if (op != null) {
+			if (op != null)
+			{
 				@operator = op.Operator;
 				left = op.Left;
 				right = op.Right;
@@ -502,7 +551,7 @@ namespace ICSharpCode.Decompiler.IL
 			right = null;
 			return false;
 		}
-		
+
 		/// <summary>
 		/// If this instruction is a conversion of the specified kind, return its argument.
 		/// Otherwise, return the instruction itself.

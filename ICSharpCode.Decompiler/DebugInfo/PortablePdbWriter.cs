@@ -28,10 +28,11 @@ using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 using System.Security.Cryptography;
 using System.Text;
+
 using ICSharpCode.Decompiler.CSharp;
 using ICSharpCode.Decompiler.CSharp.OutputVisitor;
+using ICSharpCode.Decompiler.CSharp.ProjectDecompiler;
 using ICSharpCode.Decompiler.CSharp.Syntax;
-using ICSharpCode.Decompiler.CSharp.TypeSystem;
 using ICSharpCode.Decompiler.IL;
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.TypeSystem;
@@ -58,15 +59,20 @@ namespace ICSharpCode.Decompiler.DebugInfo
 			var emptyList = new List<SequencePoint>();
 			var localScopes = new List<(MethodDefinitionHandle Method, ImportScopeInfo Import, int Offset, int Length, HashSet<ILVariable> Locals)>();
 			var stateMachineMethods = new List<(MethodDefinitionHandle MoveNextMethod, MethodDefinitionHandle KickoffMethod)>();
-			var customDocumentDebugInfo = new List<(DocumentHandle Parent, GuidHandle Guid, BlobHandle Blob)>();
+			var customDebugInfo = new List<(EntityHandle Parent, GuidHandle Guid, BlobHandle Blob)>();
 			var customMethodDebugInfo = new List<(MethodDefinitionHandle Parent, GuidHandle Guid, BlobHandle Blob)>();
 			var globalImportScope = metadata.AddImportScope(default, default);
 
-			foreach (var handle in reader.GetTopLevelTypeDefinitions()) {
-				var type = reader.GetTypeDefinition(handle);
+			string BuildFileNameFromTypeName(TypeDefinitionHandle handle)
+			{
+				var typeName = handle.GetFullTypeName(reader).TopLevelTypeName;
+				return Path.Combine(WholeProjectDecompiler.CleanUpFileName(typeName.Namespace), WholeProjectDecompiler.CleanUpFileName(typeName.Name) + ".cs");
+			}
 
+			foreach (var sourceFile in reader.GetTopLevelTypeDefinitions().GroupBy(BuildFileNameFromTypeName))
+			{
 				// Generate syntax tree
-				var syntaxTree = decompiler.DecompileTypes(new[] { handle });
+				var syntaxTree = decompiler.DecompileTypes(sourceFile);
 				if (!syntaxTree.HasChildren)
 					continue;
 
@@ -82,9 +88,10 @@ namespace ICSharpCode.Decompiler.DebugInfo
 				var debugInfoGen = new DebugInfoGenerator(decompiler.TypeSystem);
 				syntaxTree.AcceptVisitor(debugInfoGen);
 
-				lock (metadata) {
+				lock (metadata)
+				{
 					var sourceBlob = WriteSourceToBlob(metadata, sourceText, out var sourceCheckSum);
-					var name = metadata.GetOrAddDocumentName(type.GetFullTypeName(reader).ReflectionName.Replace('.', Path.DirectorySeparatorChar) + ".cs");
+					var name = metadata.GetOrAddDocumentName(sourceFile.Key);
 
 					// Create Document(Handle)
 					var document = metadata.AddDocument(name,
@@ -93,7 +100,7 @@ namespace ICSharpCode.Decompiler.DebugInfo
 						language: metadata.GetOrAddGuid(KnownGuids.CSharpLanguageGuid));
 
 					// Add embedded source to the PDB
-					customDocumentDebugInfo.Add((document,
+					customDebugInfo.Add((document,
 						metadata.GetOrAddGuid(KnownGuids.EmbeddedSource),
 						sourceBlob));
 
@@ -101,18 +108,26 @@ namespace ICSharpCode.Decompiler.DebugInfo
 
 					localScopes.AddRange(debugInfoGen.LocalScopes);
 
-					foreach (var function in debugInfoGen.Functions) {
+					foreach (var function in debugInfoGen.Functions)
+					{
 						var method = function.MoveNextMethod ?? function.Method;
 						var methodHandle = (MethodDefinitionHandle)method.MetadataToken;
 						sequencePoints.TryGetValue(function, out var points);
 						ProcessMethod(methodHandle, document, points, syntaxTree);
-						if (function.MoveNextMethod != null) {
+						if (function.MoveNextMethod != null)
+						{
 							stateMachineMethods.Add((
 								(MethodDefinitionHandle)function.MoveNextMethod.MetadataToken,
 								(MethodDefinitionHandle)function.Method.MetadataToken
 							));
+							customDebugInfo.Add((
+								function.MoveNextMethod.MetadataToken,
+								metadata.GetOrAddGuid(KnownGuids.StateMachineHoistedLocalScopes),
+								metadata.GetOrAddBlob(BuildStateMachineHoistedLocalScopes(function))
+							));
 						}
-						if (function.IsAsync) {
+						if (function.IsAsync)
+						{
 							customMethodDebugInfo.Add((methodHandle,
 								metadata.GetOrAddGuid(KnownGuids.MethodSteppingInformation),
 								metadata.GetOrAddBlob(function.AsyncDebugInfo.BuildBlob(methodHandle))));
@@ -121,30 +136,38 @@ namespace ICSharpCode.Decompiler.DebugInfo
 				}
 			}
 
-			foreach (var method in reader.MethodDefinitions) {
+			foreach (var method in reader.MethodDefinitions)
+			{
 				var md = reader.GetMethodDefinition(method);
 
-				if (sequencePointBlobs.TryGetValue(method, out var info)) {
+				if (sequencePointBlobs.TryGetValue(method, out var info))
+				{
 					metadata.AddMethodDebugInformation(info.Document, info.SequencePoints);
-				} else {
+				}
+				else
+				{
 					metadata.AddMethodDebugInformation(default, default);
 				}
 			}
 
 			localScopes.Sort((x, y) => {
-				if (x.Method != y.Method) {
+				if (x.Method != y.Method)
+				{
 					return MetadataTokens.GetRowNumber(x.Method) - MetadataTokens.GetRowNumber(y.Method);
 				}
-				if (x.Offset != y.Offset) {
+				if (x.Offset != y.Offset)
+				{
 					return x.Offset - y.Offset;
 				}
 				return y.Length - x.Length;
 			});
-			foreach (var localScope in localScopes) {
+			foreach (var localScope in localScopes)
+			{
 				int nextRow = metadata.GetRowCount(TableIndex.LocalVariable) + 1;
 				var firstLocalVariable = MetadataTokens.LocalVariableHandle(nextRow);
 
-				foreach (var local in localScope.Locals.OrderBy(l => l.Index)) {
+				foreach (var local in localScope.Locals.OrderBy(l => l.Index))
+				{
 					var localVarName = local.Name != null ? metadata.GetOrAddString(local.Name) : default;
 					metadata.AddLocalVariable(LocalVariableAttributes.None, local.Index.Value, localVarName);
 				}
@@ -154,15 +177,18 @@ namespace ICSharpCode.Decompiler.DebugInfo
 			}
 
 			stateMachineMethods.SortBy(row => MetadataTokens.GetRowNumber(row.MoveNextMethod));
-			foreach (var row in stateMachineMethods) {
+			foreach (var row in stateMachineMethods)
+			{
 				metadata.AddStateMachineMethod(row.MoveNextMethod, row.KickoffMethod);
 			}
 			customMethodDebugInfo.SortBy(row => MetadataTokens.GetRowNumber(row.Parent));
-			foreach (var row in customMethodDebugInfo) {
+			foreach (var row in customMethodDebugInfo)
+			{
 				metadata.AddCustomDebugInformation(row.Parent, row.Guid, row.Blob);
 			}
-			customDocumentDebugInfo.SortBy(row => MetadataTokens.GetRowNumber(row.Parent));
-			foreach (var row in customDocumentDebugInfo) {
+			customDebugInfo.SortBy(row => MetadataTokens.GetRowNumber(row.Parent));
+			foreach (var row in customDebugInfo)
+			{
 				metadata.AddCustomDebugInformation(row.Parent, row.Guid, row.Blob);
 			}
 
@@ -180,10 +206,13 @@ namespace ICSharpCode.Decompiler.DebugInfo
 				var methodDef = reader.GetMethodDefinition(method);
 				int localSignatureRowId;
 				MethodBodyBlock methodBody;
-				if (methodDef.RelativeVirtualAddress != 0) {
+				if (methodDef.RelativeVirtualAddress != 0)
+				{
 					methodBody = file.Reader.GetMethodBody(methodDef.RelativeVirtualAddress);
 					localSignatureRowId = methodBody.LocalSignature.IsNil ? 0 : MetadataTokens.GetRowNumber(methodBody.LocalSignature);
-				} else {
+				}
+				else
+				{
 					methodBody = null;
 					localSignatureRowId = 0;
 				}
@@ -194,10 +223,22 @@ namespace ICSharpCode.Decompiler.DebugInfo
 			}
 		}
 
+		static BlobBuilder BuildStateMachineHoistedLocalScopes(ILFunction function)
+		{
+			var builder = new BlobBuilder();
+			foreach (var variable in function.Variables.Where(v => v.StateMachineField != null).OrderBy(v => MetadataTokens.GetRowNumber(v.StateMachineField.MetadataToken)))
+			{
+				builder.WriteUInt32(0);
+				builder.WriteUInt32((uint)function.CodeSize);
+			}
+			return builder;
+		}
+
 		static BlobHandle WriteSourceToBlob(MetadataBuilder metadata, string sourceText, out byte[] sourceCheckSum)
 		{
 			var builder = new BlobBuilder();
-			using (var memory = new MemoryStream()) {
+			using (var memory = new MemoryStream())
+			{
 				var deflate = new DeflateStream(memory, CompressionLevel.Optimal, leaveOpen: true);
 				byte[] bytes = Encoding.UTF8.GetBytes(sourceText);
 				deflate.Write(bytes, 0, bytes.Length);
@@ -205,7 +246,8 @@ namespace ICSharpCode.Decompiler.DebugInfo
 				byte[] buffer = memory.ToArray();
 				builder.WriteInt32(bytes.Length); // compressed
 				builder.WriteBytes(buffer);
-				using (var hasher = SHA256.Create()) {
+				using (var hasher = SHA256.Create())
+				{
 					sourceCheckSum = hasher.ComputeHash(bytes);
 				}
 			}
@@ -225,7 +267,8 @@ namespace ICSharpCode.Decompiler.DebugInfo
 			int previousStartLine = -1;
 			int previousStartColumn = -1;
 
-			for (int i = 0; i < sequencePoints.Count; i++) {
+			for (int i = 0; i < sequencePoints.Count; i++)
+			{
 				var sequencePoint = sequencePoints[i];
 				// delta IL offset:
 				if (i > 0)
@@ -234,7 +277,8 @@ namespace ICSharpCode.Decompiler.DebugInfo
 					writer.WriteCompressedInteger(sequencePoint.Offset);
 				previousOffset = sequencePoint.Offset;
 
-				if (sequencePoint.IsHidden) {
+				if (sequencePoint.IsHidden)
+				{
 					writer.WriteInt16(0);
 					continue;
 				}
@@ -244,16 +288,22 @@ namespace ICSharpCode.Decompiler.DebugInfo
 
 				writer.WriteCompressedInteger(lineDelta);
 
-				if (lineDelta == 0) {
+				if (lineDelta == 0)
+				{
 					writer.WriteCompressedInteger(columnDelta);
-				} else {
+				}
+				else
+				{
 					writer.WriteCompressedSignedInteger(columnDelta);
 				}
 
-				if (previousStartLine < 0) {
+				if (previousStartLine < 0)
+				{
 					writer.WriteCompressedInteger(sequencePoint.StartLine);
 					writer.WriteCompressedInteger(sequencePoint.StartColumn);
-				} else {
+				}
+				else
+				{
 					writer.WriteCompressedSignedInteger(sequencePoint.StartLine - previousStartLine);
 					writer.WriteCompressedSignedInteger(sequencePoint.StartColumn - previousStartColumn);
 				}
@@ -268,7 +318,8 @@ namespace ICSharpCode.Decompiler.DebugInfo
 		static ImmutableArray<int> GetRowCounts(MetadataReader reader)
 		{
 			var builder = ImmutableArray.CreateBuilder<int>(MetadataTokens.TableCount);
-			for (int i = 0; i < MetadataTokens.TableCount; i++) {
+			for (int i = 0; i < MetadataTokens.TableCount; i++)
+			{
 				builder.Add(reader.GetTableRowCount((TableIndex)i));
 			}
 
@@ -279,7 +330,6 @@ namespace ICSharpCode.Decompiler.DebugInfo
 		{
 			StringWriter w = new StringWriter();
 			TokenWriter tokenWriter = new TextWriterTokenWriter(w);
-			syntaxTree.AcceptVisitor(new InsertParenthesesVisitor { InsertParenthesesForReadability = true });
 			tokenWriter = TokenWriter.WrapInWriterThatSetsLocationsInAST(tokenWriter);
 			syntaxTree.AcceptVisitor(new CSharpOutputVisitor(tokenWriter, settings.CSharpFormattingOptions));
 			return w.ToString();

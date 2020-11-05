@@ -44,14 +44,15 @@ namespace ICSharpCode.ILSpy.Metadata
 			tabPage.SupportsLanguageSwitching = false;
 
 			var view = Helpers.PrepareDataGrid(tabPage, this);
-			var metadata = module.Metadata;
 
 			var list = new List<MethodImplEntry>();
 			MethodImplEntry scrollTargetEntry = default;
 
-			for (int row = 1; row <= module.Metadata.GetTableRowCount(TableIndex.MethodImpl); row++) {
+			for (int row = 1; row <= module.Metadata.GetTableRowCount(TableIndex.MethodImpl); row++)
+			{
 				MethodImplEntry entry = new MethodImplEntry(module, MetadataTokens.MethodImplementationHandle(row));
-				if (entry.RID == this.scrollTarget) {
+				if (entry.RID == this.scrollTarget)
+				{
 					scrollTargetEntry = entry;
 				}
 				list.Add(entry);
@@ -61,7 +62,8 @@ namespace ICSharpCode.ILSpy.Metadata
 
 			tabPage.Content = view;
 
-			if (scrollTargetEntry.RID > 0) {
+			if (scrollTargetEntry.RID > 0)
+			{
 				ScrollItemIntoView(view, scrollTargetEntry);
 			}
 

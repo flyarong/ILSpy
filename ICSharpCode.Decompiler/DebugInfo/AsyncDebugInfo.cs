@@ -5,7 +5,7 @@ using System.Reflection.Metadata.Ecma335;
 
 namespace ICSharpCode.Decompiler.DebugInfo
 {
-	readonly struct AsyncDebugInfo
+	public readonly struct AsyncDebugInfo
 	{
 		public readonly int CatchHandlerOffset;
 		public readonly ImmutableArray<Await> Awaits;
@@ -28,11 +28,12 @@ namespace ICSharpCode.Decompiler.DebugInfo
 			}
 		}
 
-		internal BlobBuilder BuildBlob(MethodDefinitionHandle moveNext)
+		public BlobBuilder BuildBlob(MethodDefinitionHandle moveNext)
 		{
 			BlobBuilder blob = new BlobBuilder();
 			blob.WriteUInt32((uint)CatchHandlerOffset);
-			foreach (var await in Awaits) {
+			foreach (var await in Awaits)
+			{
 				blob.WriteUInt32((uint)await.YieldOffset);
 				blob.WriteUInt32((uint)await.ResumeOffset);
 				blob.WriteCompressedInteger(MetadataTokens.GetToken(moveNext));

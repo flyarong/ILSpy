@@ -5,7 +5,7 @@
   <PropertyGroup>
     <TargetFramework>net472</TargetFramework>
     <AssemblyName>ILSpy.BamlDecompiler.Plugin</AssemblyName>
-    <LangVersion>7.2</LangVersion>
+    <LangVersion>8.0</LangVersion>
 
     <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
 
@@ -35,8 +35,10 @@
     <Reference Include="WindowsBase" />
   </ItemGroup>
 
+  <Import Project="..\packages.props" />
+
   <ItemGroup>
-    <PackageReference Include="AvalonEdit" Version="6.0.1" />
+    <PackageReference Include="AvalonEdit" Version="$(AvalonEditVersion)" />
     <PackageReference Include="System.Composition" Version="1.3.0" />
   </ItemGroup>
 
@@ -67,7 +69,6 @@
     <Compile Include="Baml\KnownThings.g.cs" />
     <Compile Include="Baml\KnownTypes.cs" />
     <Compile Include="BamlConnectionId.cs" />
-    <Compile Include="Extensions.cs" />
     <Compile Include="Handlers\Blocks\ConstructorParametersHandler.cs" />
     <Compile Include="Handlers\Blocks\DocumentHandler.cs" />
     <Compile Include="Handlers\Blocks\ElementHandler.cs" />

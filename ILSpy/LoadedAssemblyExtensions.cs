@@ -5,6 +5,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
+
 using ICSharpCode.Decompiler.DebugInfo;
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.TypeSystem;
@@ -45,12 +46,18 @@ namespace ICSharpCode.ILSpy
 			return GetLoadedAssembly(file).GetTypeSystemOrNull();
 		}
 
+		public static ICompilation GetTypeSystemWithCurrentOptionsOrNull(this PEFile file)
+		{
+			return GetLoadedAssembly(file).GetTypeSystemOrNull(DecompilerTypeSystem.GetOptions(new DecompilationOptions().DecompilerSettings));
+		}
+
 		public static LoadedAssembly GetLoadedAssembly(this PEFile file)
 		{
 			if (file == null)
 				throw new ArgumentNullException(nameof(file));
 			LoadedAssembly loadedAssembly;
-			lock (LoadedAssembly.loadedAssemblies) {
+			lock (LoadedAssembly.loadedAssemblies)
+			{
 				if (!LoadedAssembly.loadedAssemblies.TryGetValue(file, out loadedAssembly))
 					throw new ArgumentException("The specified file is not associated with a LoadedAssembly!");
 			}

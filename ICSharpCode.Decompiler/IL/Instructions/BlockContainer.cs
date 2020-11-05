@@ -20,6 +20,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+
+using ICSharpCode.Decompiler.IL.Transforms;
 using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.IL
@@ -54,7 +56,7 @@ namespace ICSharpCode.Decompiler.IL
 				InvalidateFlags();
 			}
 		}
-		
+
 		Block entryPoint;
 
 		/// <summary>
@@ -84,43 +86,46 @@ namespace ICSharpCode.Decompiler.IL
 			clone.AddILRange(this);
 			clone.Blocks.AddRange(this.Blocks.Select(block => (Block)block.Clone()));
 			// Adjust branch instructions to point to the new container
-			foreach (var branch in clone.Descendants.OfType<Branch>()) {
+			foreach (var branch in clone.Descendants.OfType<Branch>())
+			{
 				if (branch.TargetBlock != null && branch.TargetBlock.Parent == this)
 					branch.TargetBlock = clone.Blocks[branch.TargetBlock.ChildIndex];
 			}
-			foreach (var leave in clone.Descendants.OfType<Leave>()) {
+			foreach (var leave in clone.Descendants.OfType<Leave>())
+			{
 				if (leave.TargetContainer == this)
 					leave.TargetContainer = clone;
 			}
 			return clone;
 		}
-		
+
 		protected internal override void InstructionCollectionUpdateComplete()
 		{
 			base.InstructionCollectionUpdateComplete();
 			this.EntryPoint = this.Blocks.FirstOrDefault();
 		}
-		
+
 		protected override void Connected()
 		{
 			base.Connected();
 			if (entryPoint != null)
 				entryPoint.IncomingEdgeCount++;
 		}
-		
+
 		protected override void Disconnected()
 		{
 			base.Disconnected();
 			if (entryPoint != null)
 				entryPoint.IncomingEdgeCount--;
 		}
-		
+
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.WriteLocalReference("BlockContainer", this, isDefinition: true);
 			output.Write(' ');
-			switch (Kind) {
+			switch (Kind)
+			{
 				case ContainerKind.Loop:
 					output.Write("(while-true) ");
 					break;
@@ -140,10 +145,14 @@ namespace ICSharpCode.Decompiler.IL
 			output.MarkFoldStart("{...}");
 			output.WriteLine("{");
 			output.Indent();
-			foreach (var inst in Blocks) {
-				if (inst.Parent == this) {
+			foreach (var inst in Blocks)
+			{
+				if (inst.Parent == this)
+				{
 					inst.WriteTo(output, options);
-				} else {
+				}
+				else
+				{
 					output.Write("stale reference to ");
 					output.WriteLocalReference(inst.Label, inst);
 				}
@@ -154,17 +163,17 @@ namespace ICSharpCode.Decompiler.IL
 			output.Write("}");
 			output.MarkFoldEnd();
 		}
-		
+
 		protected override int GetChildCount()
 		{
 			return Blocks.Count;
 		}
-		
+
 		protected override ILInstruction GetChild(int index)
 		{
 			return Blocks[index];
 		}
-		
+
 		protected override void SetChild(int index, ILInstruction value)
 		{
 			if (Blocks[index] != value)
@@ -181,12 +190,13 @@ namespace ICSharpCode.Decompiler.IL
 			base.CheckInvariant(phase);
 			Debug.Assert(Blocks.Count > 0 && EntryPoint == Blocks[0]);
 			Debug.Assert(!IsConnected || EntryPoint?.IncomingEdgeCount >= 1);
-			Debug.Assert(EntryPoint == null || Parent is ILFunction || !HasILRange);
+			Debug.Assert(EntryPoint == null || Parent is ILFunction || !ILRangeIsEmpty);
 			Debug.Assert(Blocks.All(b => b.HasFlag(InstructionFlags.EndPointUnreachable)));
 			Debug.Assert(Blocks.All(b => b.Kind == BlockKind.ControlFlow)); // this also implies that the blocks don't use FinalInstruction
 			Debug.Assert(TopologicalSort(deleteUnreachableBlocks: true).Count == Blocks.Count, "Container should not have any unreachable blocks");
 			Block bodyStartBlock;
-			switch (Kind) {
+			switch (Kind)
+			{
 				case ContainerKind.Normal:
 					break;
 				case ContainerKind.Loop:
@@ -222,7 +232,8 @@ namespace ICSharpCode.Decompiler.IL
 		protected override InstructionFlags ComputeFlags()
 		{
 			InstructionFlags flags = InstructionFlags.ControlFlow;
-			foreach (var block in Blocks) {
+			foreach (var block in Blocks)
+			{
 				flags |= block.Flags;
 			}
 			// The end point of the BlockContainer is only reachable if there's a leave instruction
@@ -232,11 +243,24 @@ namespace ICSharpCode.Decompiler.IL
 				flags &= ~InstructionFlags.EndPointUnreachable;
 			return flags;
 		}
-		
+
 		public override InstructionFlags DirectFlags {
 			get {
 				return InstructionFlags.ControlFlow;
 			}
+		}
+
+		internal override bool CanInlineIntoSlot(int childIndex, ILInstruction expressionBeingMoved)
+		{
+			// Inlining into the entry-point is allowed as long as we're not moving code into a loop.
+			// This is used to inline into the switch expression.
+			return childIndex == 0 && this.EntryPoint.IncomingEdgeCount == 1;
+		}
+
+		internal override bool PrepareExtract(int childIndex, ExtractionContext ctx)
+		{
+			// Un-inlining from the entry-point is allowed as long as we're not moving code out of a loop
+			return childIndex == 0 && this.EntryPoint.IncomingEdgeCount == 1;
 		}
 
 		/// <summary>
@@ -251,8 +275,10 @@ namespace ICSharpCode.Decompiler.IL
 			List<Block> postOrder = new List<Block>();
 			Visit(EntryPoint);
 			postOrder.Reverse();
-			if (!deleteUnreachableBlocks) {
-				for (int i = 0; i < Blocks.Count; i++) {
+			if (!deleteUnreachableBlocks)
+			{
+				for (int i = 0; i < Blocks.Count; i++)
+				{
 					if (!visited[i])
 						postOrder.Add(Blocks[i]);
 				}
@@ -262,11 +288,14 @@ namespace ICSharpCode.Decompiler.IL
 			void Visit(Block block)
 			{
 				Debug.Assert(block.Parent == this);
-				if (!visited[block.ChildIndex]) {
+				if (!visited[block.ChildIndex])
+				{
 					visited[block.ChildIndex] = true;
 
-					foreach (var branch in block.Descendants.OfType<Branch>()) {
-						if (branch.TargetBlock.Parent == this) {
+					foreach (var branch in block.Descendants.OfType<Branch>())
+					{
+						if (branch.TargetBlock.Parent == this)
+						{
 							Visit(branch.TargetBlock);
 						}
 					}
@@ -292,7 +321,8 @@ namespace ICSharpCode.Decompiler.IL
 
 		public static BlockContainer FindClosestContainer(ILInstruction inst)
 		{
-			while (inst != null) {
+			while (inst != null)
+			{
 				if (inst is BlockContainer bc)
 					return bc;
 				inst = inst.Parent;
@@ -302,7 +332,8 @@ namespace ICSharpCode.Decompiler.IL
 
 		public static BlockContainer FindClosestSwitchContainer(ILInstruction inst)
 		{
-			while (inst != null) {
+			while (inst != null)
+			{
 				if (inst is BlockContainer bc && bc.entryPoint.Instructions.FirstOrDefault() is SwitchInstruction)
 					return bc;
 				inst = inst.Parent;

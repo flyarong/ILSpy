@@ -73,8 +73,12 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Constraint on a type parameter.
 		/// </summary>
 		Constraint,
+		/// <summary>
+		/// Return type. Not actually an ISymbol implementation; but can appear as attribut target.
+		/// </summary>
+		ReturnType,
 	}
-	
+
 	/// <summary>
 	/// Interface for type system symbols.
 	/// </summary>
@@ -85,7 +89,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// (which derived interfaces of ISymbol are implemented)
 		/// </summary>
 		SymbolKind SymbolKind { get; }
-		
+
 		/// <summary>
 		/// Gets the short name of the symbol.
 		/// </summary>

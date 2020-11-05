@@ -18,10 +18,11 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using ICSharpCode.Decompiler.FlowAnalysis;
-using ICSharpCode.Decompiler.Util;
 using System.Threading;
+
+using ICSharpCode.Decompiler.FlowAnalysis;
 using ICSharpCode.Decompiler.TypeSystem;
+using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.IL.Transforms
 {
@@ -35,8 +36,10 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			var groupStores = new GroupStores(function, context.CancellationToken);
 			function.Body.AcceptVisitor(groupStores);
 			// Replace analyzed variables with their split versions:
-			foreach (var inst in function.Descendants.OfType<IInstructionWithVariableOperand>()) {
-				if (groupStores.IsAnalyzedVariable(inst.Variable)) {
+			foreach (var inst in function.Descendants.OfType<IInstructionWithVariableOperand>())
+			{
+				if (groupStores.IsAnalyzedVariable(inst.Variable))
+				{
 					inst.Variable = groupStores.GetNewVariable(inst);
 				}
 			}
@@ -45,10 +48,13 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 
 		static bool IsCandidateVariable(ILVariable v)
 		{
-			switch (v.Kind) {
+			switch (v.Kind)
+			{
 				case VariableKind.Local:
-					foreach (var ldloca in v.AddressInstructions) {
-						if (DetermineAddressUse(ldloca, ldloca.Variable) == AddressUse.Unknown) {
+					foreach (var ldloca in v.AddressInstructions)
+					{
+						if (DetermineAddressUse(ldloca, ldloca.Variable) == AddressUse.Unknown)
+						{
 							// If we don't understand how the address is being used,
 							// we can't split the variable.
 							return false;
@@ -95,7 +101,8 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 
 		static AddressUse DetermineAddressUse(ILInstruction addressLoadingInstruction, ILVariable targetVar)
 		{
-			switch (addressLoadingInstruction.Parent) {
+			switch (addressLoadingInstruction.Parent)
+			{
 				case LdObj ldobj:
 					return AddressUse.Immediate;
 				case LdFlda ldflda:
@@ -110,14 +117,18 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					if (!(stloc.Variable.Kind == VariableKind.StackSlot || stloc.Variable.Kind == VariableKind.Local))
 						return AddressUse.Unknown;
 					var value = stloc.Value;
-					while (value is LdFlda ldFlda) {
+					while (value is LdFlda ldFlda)
+					{
 						value = ldFlda.Target;
 					}
-					if (value.OpCode != OpCode.LdLoca) {
-						// GroupStores.HandleLoad() only detects ref-locals when they are directly initialized with ldloca
+					if (value.OpCode != OpCode.LdLoca)
+					{
+						// GroupStores only handles ref-locals correctly when they are supported by GetAddressLoadForRefLocalUse(),
+						// which only works for ldflda*(ldloca)
 						return AddressUse.Unknown;
 					}
-					foreach (var load in stloc.Variable.LoadInstructions) {
+					foreach (var load in stloc.Variable.LoadInstructions)
+					{
 						if (DetermineAddressUse(load, targetVar) != AddressUse.Immediate)
 							return AddressUse.Unknown;
 					}
@@ -132,23 +143,25 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			// Address is passed to method.
 			// We'll assume the method only uses the address locally,
 			// unless we can see an address being returned from the method:
-			if (call is NewObj) {
-				if (call.Method.DeclaringType.IsByRefLike) {
+			IType returnType = (call is NewObj) ? call.Method.DeclaringType : call.Method.ReturnType;
+			if (returnType.IsByRefLike)
+			{
+				// If the address is returned from the method, it check whether it's consumed immediately.
+				// This can still be fine, as long as we also check the consumer's other arguments for 'stloc targetVar'.
+				if (DetermineAddressUse(call, targetVar) != AddressUse.Immediate)
 					return AddressUse.Unknown;
-				}
-			} else {
-				if (call.Method.ReturnType.IsByRefLike) {
-					return AddressUse.Unknown;
-				}
 			}
-			foreach (var p in call.Method.Parameters) {
+			foreach (var p in call.Method.Parameters)
+			{
 				// catch "out Span<int>" and similar
 				if (p.Type.SkipModifiers() is ByReferenceType brt && brt.ElementType.IsByRefLike)
 					return AddressUse.Unknown;
 			}
 			// ensure there's no 'stloc target' in between the ldloca and the call consuming the address
-			for (int i = addressLoadingInstruction.ChildIndex + 1; i < call.Arguments.Count; i++) {
-				foreach (var inst in call.Arguments[i].Descendants) {
+			for (int i = addressLoadingInstruction.ChildIndex + 1; i < call.Arguments.Count; i++)
+			{
+				foreach (var inst in call.Arguments[i].Descendants)
+				{
 					if (inst is StLoc store && store.Variable == targetVar)
 						return AddressUse.Unknown;
 				}
@@ -165,9 +178,11 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			if (!ldloc.Variable.IsSingleDefinition)
 				return null; // only single-definition variables can be supported ref locals
 			var store = ldloc.Variable.StoreInstructions.SingleOrDefault();
-			if (store is StLoc stloc) {
+			if (store is StLoc stloc)
+			{
 				var value = stloc.Value;
-				while (value is LdFlda ldFlda) {
+				while (value is LdFlda ldFlda)
+				{
 					value = ldFlda.Target;
 				}
 				return value as LdLoca;
@@ -191,7 +206,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			/// Used to merge together all such loads of the same uninitialized value.
 			/// </summary>
 			readonly Dictionary<ILVariable, IInstructionWithVariableOperand> uninitVariableUsage = new Dictionary<ILVariable, IInstructionWithVariableOperand>();
-			
+
 			public GroupStores(ILFunction scope, CancellationToken cancellationToken) : base(scope, IsCandidateVariable, cancellationToken)
 			{
 			}
@@ -201,7 +216,8 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				base.VisitLdLoc(inst);
 				HandleLoad(inst);
 				var refLocalAddressLoad = GetAddressLoadForRefLocalUse(inst);
-				if (refLocalAddressLoad != null) {
+				if (refLocalAddressLoad != null)
+				{
 					// SupportedRefLocal: act as if we copy-propagated the ldloca
 					// to the point of use:
 					HandleLoad(refLocalAddressLoad);
@@ -216,23 +232,29 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 
 			void HandleLoad(IInstructionWithVariableOperand inst)
 			{
-				if (IsAnalyzedVariable(inst.Variable)) {
-					if (IsPotentiallyUninitialized(state, inst.Variable)) {
+				if (IsAnalyzedVariable(inst.Variable))
+				{
+					if (IsPotentiallyUninitialized(state, inst.Variable))
+					{
 						// merge all uninit loads together:
-						if (uninitVariableUsage.TryGetValue(inst.Variable, out var uninitLoad)) {
+						if (uninitVariableUsage.TryGetValue(inst.Variable, out var uninitLoad))
+						{
 							unionFind.Merge(inst, uninitLoad);
-						} else {
+						}
+						else
+						{
 							uninitVariableUsage.Add(inst.Variable, inst);
 						}
 					}
-					foreach (var store in GetStores(state, inst.Variable)) {
+					foreach (var store in GetStores(state, inst.Variable))
+					{
 						unionFind.Merge(inst, (IInstructionWithVariableOperand)store);
 					}
 				}
 			}
-			
+
 			readonly Dictionary<IInstructionWithVariableOperand, ILVariable> newVariables = new Dictionary<IInstructionWithVariableOperand, ILVariable>();
-			
+
 			/// <summary>
 			/// Gets the new variable for a LdLoc, StLoc or TryCatchHandler instruction.
 			/// </summary>
@@ -240,7 +262,8 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			{
 				var representative = unionFind.Find(inst);
 				ILVariable v;
-				if (!newVariables.TryGetValue(representative, out v)) {
+				if (!newVariables.TryGetValue(representative, out v))
+				{
 					v = new ILVariable(inst.Variable.Kind, inst.Variable.Type, inst.Variable.StackType, inst.Variable.Index);
 					v.Name = inst.Variable.Name;
 					v.HasGeneratedName = inst.Variable.HasGeneratedName;
@@ -249,7 +272,8 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					newVariables.Add(representative, v);
 					inst.Variable.Function.Variables.Add(v);
 				}
-				if (inst.Variable.HasInitialValue && uninitVariableUsage.TryGetValue(inst.Variable, out var uninitLoad) && uninitLoad == inst) {
+				if (inst.Variable.HasInitialValue && uninitVariableUsage.TryGetValue(inst.Variable, out var uninitLoad) && uninitLoad == inst)
+				{
 					v.HasInitialValue = true;
 				}
 				return v;

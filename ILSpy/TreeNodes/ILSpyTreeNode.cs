@@ -16,9 +16,13 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
+using System.Windows;
+using System.Windows.Threading;
+
 using ICSharpCode.Decompiler;
 using ICSharpCode.TreeView;
 
@@ -32,20 +36,18 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		FilterSettings filterSettings;
 		bool childrenNeedFiltering;
 
-		public FilterSettings FilterSettings
-		{
+		public FilterSettings FilterSettings {
 			get { return filterSettings; }
-			set
-			{
-				if (filterSettings != value) {
+			set {
+				if (filterSettings != value)
+				{
 					filterSettings = value;
 					OnFilterSettingsChanged();
 				}
 			}
 		}
 
-		public Language Language
-		{
+		public Language Language {
 			get { return filterSettings != null ? filterSettings.Language : Languages.AllLanguages[0]; }
 		}
 
@@ -69,6 +71,12 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			return false;
 		}
 
+		public override void ActivateItemSecondary(RoutedEventArgs e)
+		{
+			MainWindow.Instance.SelectNode(this, inNewTabPage: true);
+			MainWindow.Instance.Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)MainWindow.Instance.RefreshDecompiledView);
+		}
+
 		/// <summary>
 		/// Used to implement special save logic for some items.
 		/// This method is called on the main thread when only a single item is selected.
@@ -81,11 +89,15 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 		protected override void OnChildrenChanged(NotifyCollectionChangedEventArgs e)
 		{
-			if (e.NewItems != null) {
-				if (IsVisible) {
+			if (e.NewItems != null)
+			{
+				if (IsVisible)
+				{
 					foreach (ILSpyTreeNode node in e.NewItems)
 						ApplyFilterToChild(node);
-				} else {
+				}
+				else
+				{
 					childrenNeedFiltering = true;
 				}
 			}
@@ -99,7 +111,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 				r = FilterResult.Match;
 			else
 				r = child.Filter(this.FilterSettings);
-			switch (r) {
+			switch (r)
+			{
 				case FilterResult.Hidden:
 					child.IsHidden = true;
 					break;
@@ -126,7 +139,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		{
 			if (filterSettings == null)
 				return null;
-			if (!string.IsNullOrEmpty(filterSettings.SearchTerm)) {
+			if (!string.IsNullOrEmpty(filterSettings.SearchTerm))
+			{
 				filterSettings = filterSettings.Clone();
 				filterSettings.SearchTerm = null;
 			}
@@ -135,11 +149,14 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 		protected virtual void OnFilterSettingsChanged()
 		{
-			RaisePropertyChanged("Text");
-			if (IsVisible) {
+			RaisePropertyChanged(nameof(Text));
+			if (IsVisible)
+			{
 				foreach (ILSpyTreeNode node in this.Children.OfType<ILSpyTreeNode>())
 					ApplyFilterToChild(node);
-			} else {
+			}
+			else
+			{
 				childrenNeedFiltering = true;
 			}
 		}
@@ -153,30 +170,32 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		internal void EnsureChildrenFiltered()
 		{
 			EnsureLazyChildren();
-			if (childrenNeedFiltering) {
+			if (childrenNeedFiltering)
+			{
 				childrenNeedFiltering = false;
 				foreach (ILSpyTreeNode node in this.Children.OfType<ILSpyTreeNode>())
 					ApplyFilterToChild(node);
 			}
 		}
-		
+
 		public virtual bool IsPublicAPI {
 			get { return true; }
 		}
 
-		public virtual bool IsAutoLoaded
-		{
+		public virtual bool IsAutoLoaded {
 			get { return false; }
 		}
-		
+
 		public override System.Windows.Media.Brush Foreground {
 			get {
 				if (IsPublicAPI)
-					if (IsAutoLoaded) {
+					if (IsAutoLoaded)
+					{
 						// HACK: should not be hard coded?
 						return System.Windows.Media.Brushes.SteelBlue;
 					}
-					else {
+					else
+					{
 						return base.Foreground;
 					}
 				else

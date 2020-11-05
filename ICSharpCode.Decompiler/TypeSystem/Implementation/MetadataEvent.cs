@@ -25,6 +25,7 @@ using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+
 using ICSharpCode.Decompiler.Semantics;
 using ICSharpCode.Decompiler.Util;
 
@@ -60,7 +61,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 
 		public EntityHandle MetadataToken => handle;
 		public string Name => name;
-		
+
 		SymbolKind ISymbol.SymbolKind => SymbolKind.Event;
 
 		public bool CanAdd => !accessors.Adder.IsNil;
@@ -82,7 +83,10 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				var declaringTypeDef = DeclaringTypeDefinition;
 				var context = new GenericContext(declaringTypeDef?.TypeParameters);
 				var nullableContext = declaringTypeDef?.NullableContext ?? Nullability.Oblivious;
-				returnType = module.ResolveType(ev.Type, context, ev.GetCustomAttributes(), nullableContext);
+				// The event does not have explicit accessibility in metadata, so use its
+				// containing type to determine whether nullability applies to this type.
+				var typeOptions = module.OptionsForEntity(declaringTypeDef);
+				returnType = module.ResolveType(ev.Type, context, typeOptions, ev.GetCustomAttributes(), nullableContext);
 				return LazyInit.GetOrSet(ref this.returnType, returnType);
 			}
 		}
@@ -131,7 +135,8 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 
 		public override bool Equals(object obj)
 		{
-			if (obj is MetadataEvent ev) {
+			if (obj is MetadataEvent ev)
+			{
 				return handle == ev.handle && module.PEFile == ev.module.PEFile;
 			}
 			return false;
