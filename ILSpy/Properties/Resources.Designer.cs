@@ -541,6 +541,15 @@ namespace ICSharpCode.ILSpy.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Dark Mode.
+        /// </summary>
+        public static string DarkMode {
+            get {
+                return ResourceManager.GetString("DarkMode", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to DEBUG -- Decompile All.
         /// </summary>
         public static string DEBUGDecompile {
@@ -928,6 +937,15 @@ namespace ICSharpCode.ILSpy.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Decompile getter-only automatic properties.
+        /// </summary>
+        public static string DecompilerSettings_GetterOnlyAutomaticProperties {
+            get {
+                return ResourceManager.GetString("DecompilerSettings.GetterOnlyAutomaticProperties", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Include XML documentation comments in the decompiled code.
         /// </summary>
         public static string DecompilerSettings_IncludeXMLDocumentationCommentsInTheDecompiledCode {
@@ -1061,6 +1079,15 @@ namespace ICSharpCode.ILSpy.Properties {
         public static string DecompilerSettings_ReadOnlyMethods {
             get {
                 return ResourceManager.GetString("DecompilerSettings.ReadOnlyMethods", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Records.
+        /// </summary>
+        public static string DecompilerSettings_RecordClasses {
+            get {
+                return ResourceManager.GetString("DecompilerSettings.RecordClasses", resourceCulture);
             }
         }
         
@@ -1254,6 +1281,15 @@ namespace ICSharpCode.ILSpy.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Use primary constructor  syntax with records.
+        /// </summary>
+        public static string DecompilerSettings_UsePrimaryConstructorSyntax {
+            get {
+                return ResourceManager.GetString("DecompilerSettings.UsePrimaryConstructorSyntax", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Use ref locals to accurately represent order of evaluation.
         /// </summary>
         public static string DecompilerSettings_UseRefLocalsForAccurateOrderOfEvaluation {
@@ -1322,6 +1358,15 @@ namespace ICSharpCode.ILSpy.Properties {
         public static string DecompilerSettings_VBSpecificOptions {
             get {
                 return ResourceManager.GetString("DecompilerSettings.VBSpecificOptions", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;with&apos; initializer expressions.
+        /// </summary>
+        public static string DecompilerSettings_WithExpressions {
+            get {
+                return ResourceManager.GetString("DecompilerSettings.WithExpressions", resourceCulture);
             }
         }
         
@@ -1551,6 +1596,15 @@ namespace ICSharpCode.ILSpy.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Highlight current line.
+        /// </summary>
+        public static string HighlightCurrentLine {
+            get {
+                return ResourceManager.GetString("HighlightCurrentLine", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Highlight matching braces.
         /// </summary>
         public static string HighlightMatchingBraces {
@@ -1719,6 +1773,15 @@ namespace ICSharpCode.ILSpy.Properties {
         public static string NavigationFailed {
             get {
                 return ResourceManager.GetString("NavigationFailed", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to .NET version .
+        /// </summary>
+        public static string NETFrameworkVersion {
+            get {
+                return ResourceManager.GetString("NETFrameworkVersion", resourceCulture);
             }
         }
         

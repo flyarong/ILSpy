@@ -93,6 +93,7 @@ namespace ICSharpCode.Decompiler
 				dictionaryInitializers = false;
 				extensionMethodsInCollectionInitializers = false;
 				useRefLocalsForAccurateOrderOfEvaluation = false;
+				getterOnlyAutomaticProperties = false;
 			}
 			if (languageVersion < CSharp.LanguageVersion.CSharp7)
 			{
@@ -135,12 +136,15 @@ namespace ICSharpCode.Decompiler
 				initAccessors = false;
 				functionPointers = false;
 				forEachWithGetEnumeratorExtension = false;
+				recordClasses = false;
+				withExpressions = false;
+				usePrimaryConstructorSyntax = false;
 			}
 		}
 
 		public CSharp.LanguageVersion GetMinimumRequiredVersion()
 		{
-			if (nativeIntegers || initAccessors || functionPointers || forEachWithGetEnumeratorExtension)
+			if (nativeIntegers || initAccessors || functionPointers || forEachWithGetEnumeratorExtension || recordClasses)
 				return CSharp.LanguageVersion.Preview;
 			if (nullableReferenceTypes || readOnlyMethods || asyncEnumerator || asyncUsingAndForEachStatement
 				|| staticLocalFunctions || ranges || switchExpressions)
@@ -156,7 +160,8 @@ namespace ICSharpCode.Decompiler
 				|| discards || localFunctions)
 				return CSharp.LanguageVersion.CSharp7;
 			if (awaitInCatchFinally || useExpressionBodyForCalculatedGetterOnlyProperties || nullPropagation
-				|| stringInterpolation || dictionaryInitializers || extensionMethodsInCollectionInitializers || useRefLocalsForAccurateOrderOfEvaluation)
+				|| stringInterpolation || dictionaryInitializers || extensionMethodsInCollectionInitializers
+				|| useRefLocalsForAccurateOrderOfEvaluation || getterOnlyAutomaticProperties)
 				return CSharp.LanguageVersion.CSharp6;
 			if (asyncAwait)
 				return CSharp.LanguageVersion.CSharp5;
@@ -175,7 +180,7 @@ namespace ICSharpCode.Decompiler
 		/// <summary>
 		/// Use C# 9 <c>nint</c>/<c>nuint</c> types.
 		/// </summary>
-		[Category("C# 9.0 (experimental)")]
+		[Category("C# 9.0 / VS 2019.8")]
 		[Description("DecompilerSettings.NativeIntegers")]
 		public bool NativeIntegers {
 			get { return nativeIntegers; }
@@ -193,7 +198,7 @@ namespace ICSharpCode.Decompiler
 		/// <summary>
 		/// Use C# 9 <c>init;</c> property accessors.
 		/// </summary>
-		[Category("C# 9.0 (experimental)")]
+		[Category("C# 9.0 / VS 2019.8")]
 		[Description("DecompilerSettings.InitAccessors")]
 		public bool InitAccessors {
 			get { return initAccessors; }
@@ -206,13 +211,67 @@ namespace ICSharpCode.Decompiler
 			}
 		}
 
+		bool recordClasses = true;
+
+		/// <summary>
+		/// Use C# 9 <c>record</c> classes.
+		/// </summary>
+		[Category("C# 9.0 / VS 2019.8")]
+		[Description("DecompilerSettings.RecordClasses")]
+		public bool RecordClasses {
+			get { return recordClasses; }
+			set {
+				if (recordClasses != value)
+				{
+					recordClasses = value;
+					OnPropertyChanged();
+				}
+			}
+		}
+
+		bool withExpressions = true;
+
+		/// <summary>
+		/// Use C# 9 <c>with</c> initializer expressions.
+		/// </summary>
+		[Category("C# 9.0 / VS 2019.8")]
+		[Description("DecompilerSettings.WithExpressions")]
+		public bool WithExpressions {
+			get { return withExpressions; }
+			set {
+				if (withExpressions != value)
+				{
+					withExpressions = value;
+					OnPropertyChanged();
+				}
+			}
+		}
+
+		bool usePrimaryConstructorSyntax = true;
+
+		/// <summary>
+		/// Use primary constructor syntax with records.
+		/// </summary>
+		[Category("C# 9.0 / VS 2019.8")]
+		[Description("DecompilerSettings.UsePrimaryConstructorSyntax")]
+		public bool UsePrimaryConstructorSyntax {
+			get { return usePrimaryConstructorSyntax; }
+			set {
+				if (usePrimaryConstructorSyntax != value)
+				{
+					usePrimaryConstructorSyntax = value;
+					OnPropertyChanged();
+				}
+			}
+		}
+
 		bool functionPointers = true;
 
 		/// <summary>
 		/// Use C# 9 <c>delegate* unmanaged</c> types.
 		/// If this option is disabled, function pointers will instead be decompiled with type `IntPtr`.
 		/// </summary>
-		[Category("C# 9.0 (experimental)")]
+		[Category("C# 9.0 / VS 2019.8")]
 		[Description("DecompilerSettings.FunctionPointers")]
 		public bool FunctionPointers {
 			get { return functionPointers; }
@@ -515,6 +574,24 @@ namespace ICSharpCode.Decompiler
 			}
 		}
 
+		bool getterOnlyAutomaticProperties = true;
+
+		/// <summary>
+		/// Decompile getter-only automatic properties
+		/// </summary>
+		[Category("C# 6.0 / VS 2015")]
+		[Description("DecompilerSettings.GetterOnlyAutomaticProperties")]
+		public bool GetterOnlyAutomaticProperties {
+			get { return getterOnlyAutomaticProperties; }
+			set {
+				if (getterOnlyAutomaticProperties != value)
+				{
+					getterOnlyAutomaticProperties = value;
+					OnPropertyChanged();
+				}
+			}
+		}
+
 		bool automaticEvents = true;
 
 		/// <summary>
@@ -610,7 +687,7 @@ namespace ICSharpCode.Decompiler
 		/// <summary>
 		/// Support GetEnumerator extension methods in foreach.
 		/// </summary>
-		[Category("C# 9.0 (experimental)")]
+		[Category("C# 9.0 / VS 2019.8")]
 		[Description("DecompilerSettings.DecompileForEachWithGetEnumeratorExtension")]
 		public bool ForEachWithGetEnumeratorExtension {
 			get { return forEachWithGetEnumeratorExtension; }
@@ -1698,7 +1775,8 @@ namespace ICSharpCode.Decompiler
 				{
 					csharpFormattingOptions = FormattingOptionsFactory.CreateAllman();
 					csharpFormattingOptions.IndentSwitchBody = false;
-					csharpFormattingOptions.ArrayInitializerWrapping = Wrapping.WrapAlways;
+					csharpFormattingOptions.ArrayInitializerWrapping = Wrapping.WrapIfTooLong;
+					csharpFormattingOptions.AutoPropertyFormatting = PropertyFormatting.SingleLine;
 				}
 				return csharpFormattingOptions;
 			}

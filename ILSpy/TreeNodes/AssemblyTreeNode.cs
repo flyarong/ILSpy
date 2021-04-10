@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -47,17 +48,16 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		readonly Dictionary<string, NamespaceTreeNode> namespaces = new Dictionary<string, NamespaceTreeNode>();
 		readonly Dictionary<TypeDefinitionHandle, TypeTreeNode> typeDict = new Dictionary<TypeDefinitionHandle, TypeTreeNode>();
 		ICompilation typeSystem;
-		string textOverride;
 
 		public AssemblyTreeNode(LoadedAssembly assembly) : this(assembly, null)
 		{
 		}
 
-		private AssemblyTreeNode(LoadedAssembly assembly, string textOverride)
+		internal AssemblyTreeNode(LoadedAssembly assembly, PackageEntry packageEntry)
 		{
 			this.LoadedAssembly = assembly ?? throw new ArgumentNullException(nameof(assembly));
 			this.LazyLoading = true;
-			this.textOverride = textOverride;
+			this.PackageEntry = packageEntry;
 			Init();
 		}
 
@@ -67,13 +67,19 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 		public LoadedAssembly LoadedAssembly { get; }
 
+		/// <summary>
+		/// If this assembly was loaded from a bundle; this property returns the bundle entry that the
+		/// assembly was loaded from.
+		/// </summary>
+		public PackageEntry PackageEntry { get; }
+
 		public override bool IsAutoLoaded {
 			get {
 				return LoadedAssembly.IsAutoLoaded;
 			}
 		}
 
-		public override object Text => textOverride ?? LoadedAssembly.Text;
+		public override object Text => LoadedAssembly.Text;
 
 		public override object Icon {
 			get {
@@ -81,7 +87,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 				{
 					if (LoadedAssembly.HasLoadError)
 						return Images.AssemblyWarning;
-					var loadResult = LoadedAssembly.GetLoadResultAsync().Result;
+					var loadResult = LoadedAssembly.GetLoadResultAsync().GetAwaiter().GetResult();
 					if (loadResult.Package != null)
 					{
 						return loadResult.Package.Kind switch
@@ -119,9 +125,9 @@ namespace ICSharpCode.ILSpy.TreeNodes
 					}
 					tooltip.Inlines.Add(new Bold(new Run("Location: ")));
 					tooltip.Inlines.Add(new Run(LoadedAssembly.FileName));
-					tooltip.Inlines.Add(new LineBreak());
 					if (module != null)
 					{
+						tooltip.Inlines.Add(new LineBreak());
 						tooltip.Inlines.Add(new Bold(new Run("Architecture: ")));
 						tooltip.Inlines.Add(new Run(Language.GetPlatformDisplayName(module)));
 						string runtimeName = Language.GetRuntimeDisplayName(module);
@@ -168,21 +174,28 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			LoadedAssembly.LoadResult loadResult;
 			try
 			{
-				loadResult = LoadedAssembly.GetLoadResultAsync().Result;
+				loadResult = LoadedAssembly.GetLoadResultAsync().GetAwaiter().GetResult();
 			}
 			catch
 			{
 				// if we crashed on loading, then we don't have any children
 				return;
 			}
-			if (loadResult.PEFile != null)
+			try
 			{
-				LoadChildrenForPEFile(loadResult.PEFile);
+				if (loadResult.PEFile != null)
+				{
+					LoadChildrenForPEFile(loadResult.PEFile);
+				}
+				else if (loadResult.Package != null)
+				{
+					var package = loadResult.Package;
+					this.Children.AddRange(PackageFolderTreeNode.LoadChildrenForFolder(package.RootFolder));
+				}
 			}
-			else if (loadResult.Package != null)
+			catch (Exception ex)
 			{
-				var package = loadResult.Package;
-				this.Children.AddRange(PackageFolderTreeNode.LoadChildrenForFolder(package.RootFolder));
+				App.UnhandledException(ex);
 			}
 		}
 
@@ -192,9 +205,10 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			var assembly = (MetadataModule)typeSystem.MainModule;
 			this.Children.Add(new Metadata.MetadataTreeNode(module, this));
 			Decompiler.DebugInfo.IDebugInfoProvider debugInfo = LoadedAssembly.GetDebugInfoOrNull();
-			if (debugInfo is Decompiler.PdbProvider.PortableDebugInfoProvider ppdb)
+			if (debugInfo is Decompiler.PdbProvider.PortableDebugInfoProvider ppdb
+				&& ppdb.GetMetadataReader() is System.Reflection.Metadata.MetadataReader reader)
 			{
-				this.Children.Add(new Metadata.DebugMetadataTreeNode(module, ppdb.IsEmbedded, ppdb.Provider.GetMetadataReader(), this));
+				this.Children.Add(new Metadata.DebugMetadataTreeNode(module, ppdb.IsEmbedded, reader, this));
 			}
 			this.Children.Add(new ReferenceFolderTreeNode(module, this));
 			if (module.Resources.Any())
@@ -255,7 +269,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		public override bool CanDrag(SharpTreeNode[] nodes)
 		{
 			// prohibit dragging assemblies nested in nuget packages
-			return nodes.All(n => n is AssemblyTreeNode { textOverride: null });
+			return nodes.All(n => n is AssemblyTreeNode { PackageEntry: null });
 		}
 
 		public override void StartDrag(DependencyObject dragSource, SharpTreeNode[] nodes)
@@ -266,7 +280,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		public override bool CanDelete()
 		{
 			// prohibit deleting assemblies nested in nuget packages
-			return textOverride == null;
+			return PackageEntry == null;
 		}
 
 		public override void Delete()
@@ -310,34 +324,63 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 			try
 			{
-				LoadedAssembly.WaitUntilLoaded(); // necessary so that load errors are passed on to the caller
-			}
-			catch (AggregateException ex)
-			{
-				language.WriteCommentLine(output, LoadedAssembly.FileName);
-				switch (ex.InnerException)
+				var loadResult = LoadedAssembly.GetLoadResultAsync().GetAwaiter().GetResult();
+				if (loadResult.PEFile != null)
 				{
-					case BadImageFormatException badImage:
-						HandleException(badImage, "This file does not contain a managed assembly.");
-						return;
-					case FileNotFoundException fileNotFound:
-						HandleException(fileNotFound, "The file was not found.");
-						return;
-					case DirectoryNotFoundException dirNotFound:
-						HandleException(dirNotFound, "The directory was not found.");
-						return;
-					case PEFileNotSupportedException notSupported:
-						HandleException(notSupported, notSupported.Message);
-						return;
-					default:
-						throw;
+					language.DecompileAssembly(LoadedAssembly, output, options);
+				}
+				else if (loadResult.Package != null)
+				{
+					output.WriteLine("// " + LoadedAssembly.FileName);
+					DecompilePackage(loadResult.Package, output);
+				}
+				else
+				{
+					LoadedAssembly.GetPEFileOrNullAsync().GetAwaiter().GetResult();
 				}
 			}
-			language.DecompileAssembly(LoadedAssembly, output, options);
+			catch (BadImageFormatException badImage)
+			{
+				HandleException(badImage, "This file does not contain a managed assembly.");
+			}
+			catch (FileNotFoundException fileNotFound)
+			{
+				HandleException(fileNotFound, "The file was not found.");
+			}
+			catch (DirectoryNotFoundException dirNotFound)
+			{
+				HandleException(dirNotFound, "The directory was not found.");
+			}
+			catch (PEFileNotSupportedException notSupported)
+			{
+				HandleException(notSupported, notSupported.Message);
+			}
+		}
+
+		private void DecompilePackage(LoadedPackage package, ITextOutput output)
+		{
+			switch (package.Kind)
+			{
+				case LoadedPackage.PackageKind.Zip:
+					output.WriteLine("// File format: .zip file");
+					break;
+				case LoadedPackage.PackageKind.Bundle:
+					var header = package.BundleHeader;
+					output.WriteLine($"// File format: .NET bundle {header.MajorVersion}.{header.MinorVersion}");
+					break;
+			}
+			output.WriteLine();
+			output.WriteLine("Entries:");
+			foreach (var entry in package.Entries)
+			{
+				output.WriteLine("  " + entry.Name);
+			}
 		}
 
 		public override bool Save(TabPageModel tabPage)
 		{
+			if (!LoadedAssembly.IsLoadedAsValidAssembly)
+				return false;
 			Language language = this.Language;
 			if (string.IsNullOrEmpty(language.ProjectFileExtension))
 				return false;
@@ -445,7 +488,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		{
 			if (context.SelectedTreeNodes == null)
 				return false;
-			return context.SelectedTreeNodes.All(n => n is AssemblyTreeNode);
+			return context.SelectedTreeNodes.All(n => n is AssemblyTreeNode asm && asm.LoadedAssembly.IsLoadedAsValidAssembly);
 		}
 
 		public bool IsEnabled(TextViewContext context)
@@ -453,10 +496,11 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			return true;
 		}
 
-		public void Execute(TextViewContext context)
+		public async void Execute(TextViewContext context)
 		{
 			if (context.SelectedTreeNodes == null)
 				return;
+			var tasks = new List<Task>();
 			foreach (var node in context.SelectedTreeNodes)
 			{
 				var la = ((AssemblyTreeNode)node).LoadedAssembly;
@@ -467,10 +511,11 @@ namespace ICSharpCode.ILSpy.TreeNodes
 					var metadata = module.Metadata;
 					foreach (var assyRef in metadata.AssemblyReferences)
 					{
-						resolver.Resolve(new AssemblyReference(module, assyRef));
+						tasks.Add(resolver.ResolveAsync(new AssemblyReference(module, assyRef)));
 					}
 				}
 			}
+			await Task.WhenAll(tasks);
 			MainWindow.Instance.RefreshDecompiledView();
 		}
 	}
@@ -502,7 +547,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 				if (!loadedAssm.HasLoadError)
 				{
 					loadedAssm.IsAutoLoaded = false;
-					node.RaisePropertyChanged(nameof(node.Foreground));
+					node.RaisePropertyChanged(nameof(ILSpyTreeNode.IsAutoLoaded));
 				}
 			}
 			MainWindow.Instance.CurrentAssemblyList.RefreshSave();

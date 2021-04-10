@@ -44,7 +44,15 @@ namespace ICSharpCode.Decompiler.Metadata
 			{
 				var parts = fullName.Split('/');
 				this.Name = parts[0];
-				this.Version = parts[1];
+				if (parts.Length > 1)
+				{
+					this.Version = parts[1];
+				}
+				else
+				{
+					this.Version = "<UNKNOWN>";
+				}
+
 				this.Type = type;
 				this.Path = path;
 				this.RuntimeComponents = runtimeComponents ?? Empty<string>.Array;
@@ -67,10 +75,13 @@ namespace ICSharpCode.Decompiler.Metadata
 		readonly List<string> packageBasePaths = new List<string>();
 		readonly Version targetFrameworkVersion;
 		readonly string dotnetBasePath = FindDotNetExeDirectory();
+		readonly string preferredRuntimePack;
 
-		public DotNetCorePathFinder(TargetFrameworkIdentifier targetFramework, Version targetFrameworkVersion)
+		public DotNetCorePathFinder(TargetFrameworkIdentifier targetFramework, Version targetFrameworkVersion,
+			string preferredRuntimePack)
 		{
 			this.targetFrameworkVersion = targetFrameworkVersion;
+			this.preferredRuntimePack = preferredRuntimePack;
 
 			if (targetFramework == TargetFrameworkIdentifier.NETStandard)
 			{
@@ -82,8 +93,9 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
-		public DotNetCorePathFinder(string parentAssemblyFileName, string targetFrameworkIdString, TargetFrameworkIdentifier targetFramework, Version targetFrameworkVersion, ReferenceLoadInfo loadInfo = null)
-			: this(targetFramework, targetFrameworkVersion)
+		public DotNetCorePathFinder(string parentAssemblyFileName, string targetFrameworkIdString, string preferredRuntimePack,
+			TargetFrameworkIdentifier targetFramework, Version targetFrameworkVersion, ReferenceLoadInfo loadInfo = null)
+			: this(targetFramework, targetFrameworkVersion, preferredRuntimePack)
 		{
 			string assemblyName = Path.GetFileNameWithoutExtension(parentAssemblyFileName);
 			string basePath = Path.GetDirectoryName(parentAssemblyFileName);
@@ -195,7 +207,15 @@ namespace ICSharpCode.Decompiler.Metadata
 				runtimePack = null;
 				return null;
 			}
-			foreach (string pack in RuntimePacks)
+
+			IEnumerable<string> runtimePacks = RuntimePacks;
+
+			if (preferredRuntimePack != null)
+			{
+				runtimePacks = new[] { preferredRuntimePack }.Concat(runtimePacks);
+			}
+
+			foreach (string pack in runtimePacks)
 			{
 				runtimePack = pack;
 				string basePath = Path.Combine(dotnetBasePath, "shared", pack);

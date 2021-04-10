@@ -18,11 +18,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Metadata;
 
-using Humanizer;
+using Humanizer.Inflections;
 
 using ICSharpCode.Decompiler.CSharp.OutputVisitor;
 using ICSharpCode.Decompiler.TypeSystem;
@@ -52,7 +53,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		};
 
 		ILTransformContext context;
-		string[] currentFieldNames;
+		List<string> currentLowerCaseTypeOrMemberNames;
 		Dictionary<string, int> reservedVariableNames;
 		Dictionary<MethodDefinitionHandle, string> localFunctionMapping;
 		HashSet<ILVariable> loopCounters;
@@ -61,8 +62,18 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		public void Run(ILFunction function, ILTransformContext context)
 		{
 			this.context = context;
-			currentFieldNames = function.Method.DeclaringTypeDefinition.Fields.Select(f => f.Name).ToArray();
+
 			reservedVariableNames = new Dictionary<string, int>();
+			currentLowerCaseTypeOrMemberNames = new List<string>();
+			var currentLowerCaseMemberNames = CollectAllLowerCaseMemberNames(function.Method.DeclaringTypeDefinition);
+			foreach (var name in currentLowerCaseMemberNames)
+				currentLowerCaseTypeOrMemberNames.Add(name);
+			var currentLowerCaseTypeNames = CollectAllLowerCaseTypeNames(function.Method.DeclaringTypeDefinition);
+			foreach (var name in currentLowerCaseTypeNames)
+			{
+				currentLowerCaseTypeOrMemberNames.Add(name);
+				AddExistingName(reservedVariableNames, name);
+			}
 			localFunctionMapping = new Dictionary<MethodDefinitionHandle, string>();
 			loopCounters = CollectLoopCounters(function);
 			foreach (var f in function.Descendants.OfType<ILFunction>())
@@ -144,6 +155,29 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			{
 				PerformAssignment(f);
 			}
+		}
+
+		static IEnumerable<string> CollectAllLowerCaseMemberNames(ITypeDefinition type)
+		{
+			foreach (var item in type.GetMembers(m => IsLowerCase(m.Name)))
+				yield return item.Name;
+		}
+
+		static IEnumerable<string> CollectAllLowerCaseTypeNames(ITypeDefinition type)
+		{
+
+			foreach (var item in type.ParentModule.TopLevelTypeDefinitions)
+			{
+				if (item.Namespace != type.Namespace)
+					continue;
+				if (IsLowerCase(item.Name))
+					yield return item.Name;
+			}
+		}
+
+		static bool IsLowerCase(string name)
+		{
+			return name.Length > 0 && char.ToLower(name[0]) == name[0];
 		}
 
 		bool IsSetOrEventAccessor(IMethod method)
@@ -273,10 +307,10 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		{
 			switch (arg)
 			{
-				case LdObj ldobj:
-				case LdFlda ldflda:
-				case LdsFlda ldsflda:
-				case CallInstruction call:
+				case LdObj _:
+				case LdFlda _:
+				case LdsFlda _:
+				case CallInstruction _:
 					return true;
 				default:
 					return false;
@@ -391,7 +425,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				var proposedNameForAddress = variable.AddressInstructions.OfType<LdLoca>()
 					.Select(arg => arg.Parent is CallInstruction c ? c.GetParameter(arg.ChildIndex)?.Name : null)
 					.Where(arg => !string.IsNullOrWhiteSpace(arg))
-					.Except(currentFieldNames).ToList();
+					.Except(currentLowerCaseTypeOrMemberNames).ToList();
 				if (proposedNameForAddress.Count > 0)
 				{
 					proposedName = proposedNameForAddress[0];
@@ -401,7 +435,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			{
 				var proposedNameForStores = variable.StoreInstructions.OfType<StLoc>()
 					.Select(expr => GetNameFromInstruction(expr.Value))
-					.Except(currentFieldNames).ToList();
+					.Except(currentLowerCaseTypeOrMemberNames).ToList();
 				if (proposedNameForStores.Count == 1)
 				{
 					proposedName = proposedNameForStores[0];
@@ -411,7 +445,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			{
 				var proposedNameForLoads = variable.LoadInstructions
 					.Select(arg => GetNameForArgument(arg.Parent, arg.ChildIndex))
-					.Except(currentFieldNames).ToList();
+					.Except(currentLowerCaseTypeOrMemberNames).ToList();
 				if (proposedNameForLoads.Count == 1)
 				{
 					proposedName = proposedNameForLoads[0];
@@ -421,7 +455,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			{
 				var proposedNameForStoresFromNewObj = variable.StoreInstructions.OfType<StLoc>()
 					.Select(expr => GetNameByType(GuessType(variable.Type, expr.Value, context)))
-					.Except(currentFieldNames).ToList();
+					.Except(currentLowerCaseTypeOrMemberNames).ToList();
 				if (proposedNameForStoresFromNewObj.Count == 1)
 				{
 					proposedName = proposedNameForStoresFromNewObj[0];
@@ -440,6 +474,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				reservedVariableNames.Add(proposedName, 0);
 			}
 			int count = ++reservedVariableNames[proposedName];
+			Debug.Assert(!string.IsNullOrWhiteSpace(proposedName));
 			if (count > 1)
 			{
 				return proposedName + count.ToString();
@@ -475,6 +510,14 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					{
 						// use name from Get-methods
 						return CleanUpVariableName(m.Name.Substring(3));
+					}
+					break;
+				case DynamicInvokeMemberInstruction dynInvokeMember:
+					if (dynInvokeMember.Name.StartsWith("Get", StringComparison.OrdinalIgnoreCase)
+						&& dynInvokeMember.Name.Length >= 4 && char.IsUpper(dynInvokeMember.Name[3]))
+					{
+						// use name from Get-methods
+						return CleanUpVariableName(dynInvokeMember.Name.Substring(3));
 					}
 					break;
 			}
@@ -647,7 +690,8 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				return variableType;
 		}
 
-		static Dictionary<string, int> CollectReservedVariableNames(ILFunction function, ILVariable existingVariable)
+		static Dictionary<string, int> CollectReservedVariableNames(ILFunction function,
+			ILVariable existingVariable, bool mustResolveConflicts)
 		{
 			var reservedVariableNames = new Dictionary<string, int>();
 			var rootFunction = function.Ancestors.OfType<ILFunction>().Single(f => f.Parent == null);
@@ -663,12 +707,18 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						AddExistingName(reservedVariableNames, v.Name);
 				}
 			}
-			foreach (var f in rootFunction.Method.DeclaringTypeDefinition.GetFields().Select(f => f.Name))
-				AddExistingName(reservedVariableNames, f);
+			if (mustResolveConflicts)
+			{
+				var memberNames = CollectAllLowerCaseMemberNames(function.Method.DeclaringTypeDefinition)
+					.Concat(CollectAllLowerCaseTypeNames(function.Method.DeclaringTypeDefinition));
+				foreach (var name in memberNames)
+					AddExistingName(reservedVariableNames, name);
+			}
 			return reservedVariableNames;
 		}
 
-		internal static string GenerateForeachVariableName(ILFunction function, ILInstruction valueContext, ILVariable existingVariable = null)
+		internal static string GenerateForeachVariableName(ILFunction function, ILInstruction valueContext,
+			ILVariable existingVariable = null, bool mustResolveConflicts = false)
 		{
 			if (function == null)
 				throw new ArgumentNullException(nameof(function));
@@ -676,7 +726,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			{
 				return existingVariable.Name;
 			}
-			var reservedVariableNames = CollectReservedVariableNames(function, existingVariable);
+			var reservedVariableNames = CollectReservedVariableNames(function, existingVariable, mustResolveConflicts);
 
 			string baseName = GetNameFromInstruction(valueContext);
 			if (string.IsNullOrEmpty(baseName))
@@ -715,6 +765,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				reservedVariableNames.Add(proposedName, 0);
 			}
 			int count = ++reservedVariableNames[proposedName];
+			Debug.Assert(!string.IsNullOrWhiteSpace(proposedName));
 			if (count > 1)
 			{
 				return proposedName + count.ToString();
@@ -725,11 +776,13 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			}
 		}
 
-		internal static string GenerateVariableName(ILFunction function, IType type, ILInstruction valueContext = null, ILVariable existingVariable = null)
+		internal static string GenerateVariableName(ILFunction function, IType type,
+			ILInstruction valueContext = null, ILVariable existingVariable = null,
+			bool mustResolveConflicts = false)
 		{
 			if (function == null)
 				throw new ArgumentNullException(nameof(function));
-			var reservedVariableNames = CollectReservedVariableNames(function, existingVariable);
+			var reservedVariableNames = CollectReservedVariableNames(function, existingVariable, mustResolveConflicts);
 
 			string baseName = valueContext != null ? GetNameFromInstruction(valueContext) ?? GetNameByType(type) : GetNameByType(type);
 			string proposedName = "obj";
@@ -765,6 +818,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				reservedVariableNames.Add(proposedName, 0);
 			}
 			int count = ++reservedVariableNames[proposedName];
+			Debug.Assert(!string.IsNullOrWhiteSpace(proposedName));
 			if (count > 1)
 			{
 				return proposedName + count.ToString();
@@ -777,8 +831,8 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 
 		private static bool IsPlural(string baseName, ref string proposedName)
 		{
-			var newName = baseName.Singularize(inputIsKnownToBePlural: false);
-			if (newName == baseName)
+			var newName = Vocabularies.Default.Singularize(baseName, inputIsKnownToBePlural: false);
+			if (string.IsNullOrWhiteSpace(newName) || newName == baseName)
 				return false;
 			proposedName = newName;
 			return true;

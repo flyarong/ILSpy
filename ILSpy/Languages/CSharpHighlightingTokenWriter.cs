@@ -16,7 +16,6 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -145,7 +144,6 @@ namespace ICSharpCode.ILSpy
 				case "for":
 				case "foreach":
 				case "lock":
-				case "global":
 				case "await":
 					color = structureKeywordsColor;
 					break;
@@ -171,6 +169,10 @@ namespace ICSharpCode.ILSpy
 				case "nameof":
 				case "stackalloc":
 					color = typeKeywordsColor;
+					break;
+				case "with":
+					if (role == WithInitializerExpression.WithKeywordRole)
+						color = typeKeywordsColor;
 					break;
 				case "try":
 				case "throw":
@@ -228,6 +230,7 @@ namespace ICSharpCode.ILSpy
 				case "class":
 				case "interface":
 				case "delegate":
+				case "record":
 					color = referenceTypeKeywordsColor;
 					break;
 				case "select":
@@ -339,8 +342,18 @@ namespace ICSharpCode.ILSpy
 			{
 				color = valueKeywordColor;
 			}
-			if (identifier.Name == "var" && identifier.Parent is AstType)
-				color = queryKeywordsColor;
+			if (identifier.Parent is AstType)
+			{
+				switch (identifier.Name)
+				{
+					case "var":
+						color = queryKeywordsColor;
+						break;
+					case "global":
+						color = structureKeywordsColor;
+						break;
+				}
+			}
 			switch (GetCurrentDefinition())
 			{
 				case ITypeDefinition t:

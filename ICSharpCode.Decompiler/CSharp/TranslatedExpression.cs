@@ -330,7 +330,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			  // Everything else can be worked around by casting via long.
 				if (!(targetType.IsKnownType(KnownTypeCode.Int64) || targetType.Kind == TypeKind.NInt
 					|| (checkForOverflow && targetType.IsKnownType(KnownTypeCode.Int32))
-					|| targetType.Kind.IsAnyPointer()))
+					|| targetType.Kind.IsAnyPointer() || targetType.Kind == TypeKind.ByReference))
 				{
 					var convertVia = expressionBuilder.settings.NativeIntegers ? SpecialType.NInt : compilation.FindType(KnownTypeCode.Int64);
 					return this.ConvertTo(convertVia, expressionBuilder, checkForOverflow)
@@ -344,7 +344,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			  // Everything else can be worked around by casting via ulong.
 				if (!(targetType.IsKnownType(KnownTypeCode.UInt64) || targetType.Kind == TypeKind.NUInt
 					|| (checkForOverflow && targetType.IsKnownType(KnownTypeCode.UInt32))
-					|| targetType.Kind.IsAnyPointer()))
+					|| targetType.Kind.IsAnyPointer() || targetType.Kind == TypeKind.ByReference))
 				{
 					var convertVia = expressionBuilder.settings.NativeIntegers ? SpecialType.NUInt : compilation.FindType(KnownTypeCode.UInt64);
 					return this.ConvertTo(convertVia, expressionBuilder, checkForOverflow)
@@ -452,6 +452,7 @@ namespace ICSharpCode.Decompiler.CSharp
 				// perform remaining pointer cast, if necessary
 				return pointerExpr.ConvertTo(targetType, expressionBuilder);
 			}
+			Expression expr;
 			if (targetType.Kind == TypeKind.ByReference)
 			{
 				if (NormalizeTypeVisitor.TypeErasure.EquivalentTypes(targetType, this.Type))
@@ -481,7 +482,6 @@ namespace ICSharpCode.Decompiler.CSharp
 				// Convert from integer/pointer to reference.
 				// First, convert to the corresponding pointer type:
 				var arg = this.ConvertTo(new PointerType(elementType), expressionBuilder, checkForOverflow);
-				Expression expr;
 				ResolveResult elementRR;
 				if (arg.Expression is UnaryOperatorExpression unary && unary.Operator == UnaryOperatorType.AddressOf)
 				{
@@ -561,7 +561,11 @@ namespace ICSharpCode.Decompiler.CSharp
 					return this;
 				}
 			}
-			var castExpr = new CastExpression(expressionBuilder.ConvertType(targetType), Expression);
+			// BaseReferenceExpression must not be used with CastExpressions
+			expr = Expression is BaseReferenceExpression
+				? new ThisReferenceExpression().WithILInstruction(this.ILInstructions)
+				: Expression;
+			var castExpr = new CastExpression(expressionBuilder.ConvertType(targetType), expr);
 			bool needsCheckAnnotation = targetUType.GetStackType().IsIntegerType();
 			if (needsCheckAnnotation)
 			{

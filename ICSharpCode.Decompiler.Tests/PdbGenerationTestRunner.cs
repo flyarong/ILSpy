@@ -59,7 +59,7 @@ namespace ICSharpCode.Decompiler.Tests
 			string peFileName = Path.Combine(TestCasePath, testName + ".expected.dll");
 			string pdbFileName = Path.Combine(TestCasePath, testName + ".expected.pdb");
 			var moduleDefinition = new PEFile(peFileName);
-			var resolver = new UniversalAssemblyResolver(peFileName, false, moduleDefinition.Reader.DetectTargetFrameworkId(), PEStreamOptions.PrefetchEntireImage);
+			var resolver = new UniversalAssemblyResolver(peFileName, false, moduleDefinition.Reader.DetectTargetFrameworkId(), null, PEStreamOptions.PrefetchEntireImage);
 			var decompiler = new CSharpDecompiler(moduleDefinition, resolver, new DecompilerSettings());
 			using (FileStream pdbStream = File.Open(Path.Combine(TestCasePath, testName + ".pdb"), FileMode.OpenOrCreate, FileAccess.ReadWrite))
 			{
@@ -93,7 +93,7 @@ namespace ICSharpCode.Decompiler.Tests
 			foreach (var file in document.Descendants("file"))
 			{
 				file.Attribute("checksum").Remove();
-				file.Attribute("embeddedSourceLength").Remove();
+				file.Attribute("embeddedSourceLength")?.Remove();
 				file.ReplaceNodes(new XCData(file.Value.Replace("\uFEFF", "")));
 			}
 			document.Save(fileName, SaveOptions.None);

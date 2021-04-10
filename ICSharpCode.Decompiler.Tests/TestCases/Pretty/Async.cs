@@ -28,6 +28,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 	{
 		private int memberField;
 
+		private static bool True()
+		{
+			return true;
+		}
+
 		public async void SimpleVoidMethod()
 		{
 			Console.WriteLine("Before");
@@ -152,6 +157,155 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 				}
 			}
 		}
+
+		public async Task AnonymousThrow()
+		{
+			try
+			{
+				await Task.Delay(0);
+			}
+			catch
+			{
+				await Task.Delay(0);
+				throw;
+			}
+		}
+
+		public async Task DeclaredException()
+		{
+			try
+			{
+				await Task.Delay(0);
+			}
+			catch (Exception)
+			{
+				await Task.Delay(0);
+				throw;
+			}
+		}
+
+		public async Task RethrowDeclared()
+		{
+			try
+			{
+				await Task.Delay(0);
+			}
+			catch (Exception ex)
+			{
+				await Task.Delay(0);
+				throw ex;
+			}
+		}
+
+		public async Task RethrowDeclaredWithFilter()
+		{
+			try
+			{
+				await Task.Delay(0);
+			}
+			catch (Exception ex) when (ex.GetType().FullName.Contains("asdf"))
+			{
+				await Task.Delay(0);
+				throw;
+			}
+		}
+
+		public async Task ComplexCatchBlock()
+		{
+			try
+			{
+				await Task.Delay(0);
+			}
+			catch (Exception ex)
+			{
+				if (ex.GetHashCode() != 0)
+				{
+					throw;
+				}
+				await Task.Delay(0);
+			}
+		}
+
+		public async Task ComplexCatchBlockWithFilter()
+		{
+			try
+			{
+				await Task.Delay(0);
+			}
+			catch (Exception ex) when (ex.GetType().FullName.Contains("asdf"))
+			{
+				if (ex.GetHashCode() != 0)
+				{
+					throw;
+				}
+				await Task.Delay(0);
+			}
+		}
+
+		public async Task LoadsToCatch(int i)
+		{
+			try
+			{
+				throw null;
+			}
+			catch (Exception ex2) when (i == 0)
+			{
+				Console.WriteLine("First!");
+				if (i == 1)
+				{
+					throw;
+				}
+				await Task.Yield();
+				Console.WriteLine(ex2.StackTrace);
+			}
+			catch (Exception ex3) when (True())
+			{
+				Console.WriteLine("Second!");
+				if (i == 1)
+				{
+					throw;
+				}
+				await Task.Yield();
+				Console.WriteLine(ex3.StackTrace);
+			}
+			catch (Exception ex)
+			{
+				Console.WriteLine("Third!");
+				if (i == 1)
+				{
+					throw;
+				}
+				await Task.Yield();
+				Console.WriteLine(ex.StackTrace);
+			}
+			catch when (i == 0)
+			{
+				Console.WriteLine("Fourth!");
+				if (i == 1)
+				{
+					throw;
+				}
+				await Task.Yield();
+			}
+			catch when (True())
+			{
+				Console.WriteLine("Fifth!");
+				if (i == 1)
+				{
+					throw;
+				}
+				await Task.Yield();
+			}
+			catch
+			{
+				Console.WriteLine("Sixth!");
+				if (i == 1)
+				{
+					throw;
+				}
+				await Task.Yield();
+			}
+		}
 #endif
 
 		public static async Task<int> GetIntegerSumAsync(IEnumerable<int> items)
@@ -167,11 +321,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public static Func<Task<int>> AsyncLambda()
 		{
-			return async () => await GetIntegerSumAsync(new int[3] {
-				1,
-				2,
-				3
-			});
+			return async () => await GetIntegerSumAsync(new int[3] { 1, 2, 3 });
 		}
 
 		public static Func<Task<int>> AsyncDelegate()
@@ -252,10 +402,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 	public struct HopToThreadPoolAwaitable : INotifyCompletion
 	{
-		public bool IsCompleted {
-			get;
-			set;
-		}
+		public bool IsCompleted { get; set; }
 
 		public HopToThreadPoolAwaitable GetAwaiter()
 		{

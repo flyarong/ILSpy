@@ -144,12 +144,14 @@ namespace ICSharpCode.Decompiler.CSharp
 			// unpack nullable type, if necessary:
 			// we need to do this in all cases, because there are nullable bools and enum types as well.
 			type = NullableType.GetUnderlyingType(type);
+
 			if (type.IsKnownType(KnownTypeCode.Boolean))
 			{
 				value = i != 0;
 			}
-			else if (type.IsKnownType(KnownTypeCode.String) && map != null)
+			else if (map != null)
 			{
+				Debug.Assert(type.IsKnownType(KnownTypeCode.String));
 				var keys = map.Where(entry => entry.Value == i).Select(entry => entry.Key);
 				foreach (var key in keys)
 					yield return new ConstantResolveResult(type, key);
@@ -196,19 +198,24 @@ namespace ICSharpCode.Decompiler.CSharp
 			caseLabelMapping = new Dictionary<Block, ConstantResolveResult>();
 
 			TranslatedExpression value;
+			IType type;
 			if (inst.Value is StringToInt strToInt)
 			{
 				value = exprBuilder.Translate(strToInt.Argument)
 					.ConvertTo(
 						typeSystem.FindType(KnownTypeCode.String),
 						exprBuilder,
-						allowImplicitConversion: true
+						// switch statement does support implicit conversions in general, however, the rules are
+						// not very intuitive and in order to prevent bugs, we emit an explicit cast.
+						allowImplicitConversion: false
 					);
+				type = exprBuilder.compilation.FindType(KnownTypeCode.String);
 			}
 			else
 			{
 				strToInt = null;
 				value = exprBuilder.Translate(inst.Value);
+				type = value.Type;
 			}
 
 			IL.SwitchSection defaultSection = inst.GetDefaultSection();
@@ -229,7 +236,7 @@ namespace ICSharpCode.Decompiler.CSharp
 				}
 				else
 				{
-					var values = section.Labels.Values.SelectMany(i => CreateTypedCaseLabel(i, value.Type, strToInt?.Map)).ToArray();
+					var values = section.Labels.Values.SelectMany(i => CreateTypedCaseLabel(i, type, strToInt?.Map)).ToArray();
 					if (section.HasNullLabel)
 					{
 						astSection.CaseLabels.Add(new CaseLabel(new NullReferenceExpression()));
@@ -383,6 +390,15 @@ namespace ICSharpCode.Decompiler.CSharp
 			if (!endContainerLabels.TryGetValue(inst.TargetContainer, out string label))
 			{
 				label = "end_" + inst.TargetLabel;
+				if (!duplicateLabels.TryGetValue(label, out int count))
+				{
+					duplicateLabels.Add(label, 1);
+				}
+				else
+				{
+					duplicateLabels[label]++;
+					label += "_" + (count + 1);
+				}
 				endContainerLabels.Add(inst.TargetContainer, label);
 			}
 			return new GotoStatement(label).WithILInstruction(inst);
@@ -1118,10 +1134,46 @@ namespace ICSharpCode.Decompiler.CSharp
 							.WithRR(new ResolveResult(inst.Variable.Type));
 					}
 				}
+				if (initExpr.GetResolveResult()?.Type.Kind == TypeKind.Pointer
+					&& !IsAddressOfMoveableVar(initExpr)
+					&& !IsFixedSizeBuffer(initExpr)
+					&& refType is ByReferenceType brt)
+				{
+					// C# doesn't allow pinning an already-unmanaged pointer
+					//   fixed (int* ptr = existing_ptr) {} -> invalid
+					//   fixed (int* ptr = &existing_ptr->field) {} -> invalid
+					//   fixed (int* ptr = &local_var) {} -> invalid
+					// We work around this by instead doing:
+					//   fixed (int* ptr = &Unsafe.AsRef<int>(existing_ptr))
+					var asRefCall = exprBuilder.CallUnsafeIntrinsic(
+						name: "AsRef",
+						arguments: new Expression[] { initExpr },
+						returnType: brt.ElementType,
+						typeArguments: new IType[] { brt.ElementType }
+					);
+					initExpr = new UnaryOperatorExpression(UnaryOperatorType.AddressOf, asRefCall)
+							.WithRR(new ResolveResult(inst.Variable.Type));
+				}
 			}
 			fixedStmt.Variables.Add(new VariableInitializer(inst.Variable.Name, initExpr).WithILVariable(inst.Variable));
 			fixedStmt.EmbeddedStatement = Convert(inst.Body);
 			return fixedStmt.WithILInstruction(inst);
+		}
+
+		private static bool IsAddressOfMoveableVar(Expression initExpr)
+		{
+			if (initExpr is UnaryOperatorExpression { Operator: UnaryOperatorType.AddressOf } uoe)
+			{
+				var inst = uoe.Expression.Annotation<ILInstruction>();
+				return !(inst != null && PointerArithmeticOffset.IsFixedVariable(inst));
+			}
+			return false;
+		}
+
+		private static bool IsFixedSizeBuffer(Expression initExpr)
+		{
+			var mrr = initExpr.GetResolveResult() as MemberResolveResult;
+			return mrr?.Member is IField f && CSharpDecompiler.IsFixedField(f, out _, out _);
 		}
 
 		protected internal override TranslatedStatement VisitBlock(Block block)
@@ -1316,6 +1368,7 @@ namespace ICSharpCode.Decompiler.CSharp
 					method.Modifiers |= Modifiers.Extern;
 				}
 
+				CSharpDecompiler.AddAnnotationsToDeclaration(function.ReducedMethod, method, function);
 				CSharpDecompiler.CleanUpMethodDeclaration(method, method.Body, function, function.Method.HasBody);
 				CSharpDecompiler.RemoveAttribute(method, KnownAttribute.CompilerGenerated);
 				var stmt = new LocalFunctionDeclarationStatement(method);

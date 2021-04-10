@@ -249,15 +249,15 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 							return false;
 						if (!this.parameters.TryGetValue(v, out var value))
 							return false;
-						// Parameter variable cannot be used in two different compiler-generated expression trees,
-						// therefore we have to abort if the parameter is already mapped to a variable.
-						if (this.parameterMapping.ContainsKey(v))
-							return false;
-						var param = new ILVariable(VariableKind.Parameter, value.Item1, i) { Name = value.Item2 };
-						parameterMapping.Add(v, param);
-						parameterVariables.Add(param);
-						parameters.Add(new DefaultParameter(value.Item1, value.Item2));
-						instructionsToRemove.Add((ILInstruction)v.StoreInstructions[0]);
+						// Add parameter variable only once to mapping.
+						if (!this.parameterMapping.ContainsKey(v))
+						{
+							var param = new ILVariable(VariableKind.Parameter, value.Item1, i) { Name = value.Item2 };
+							parameterMapping.Add(v, param);
+							parameterVariables.Add(param);
+							parameters.Add(new DefaultParameter(value.Item1, value.Item2));
+							instructionsToRemove.Add((ILInstruction)v.StoreInstructions[0]);
+						}
 						i++;
 					}
 					return true;
@@ -515,15 +515,16 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						Arguments = { left(), right() }
 					}, method.ReturnType);
 				case 4:
-					if (!invocation.Arguments[2].MatchLdcI4(out var isLifted))
+					if (!invocation.Arguments[2].MatchLdcI4(out var isLiftedToNull))
 						return (null, SpecialType.UnknownType);
 					if (!MatchGetMethodFromHandle(invocation.Arguments[3], out method))
 						return (null, SpecialType.UnknownType);
-					if (isLifted != 0)
+					bool isLifted = NullableType.IsNullable(leftType);
+					if (isLifted)
 						method = CSharpOperators.LiftUserDefinedOperator((IMethod)method);
 					return (() => new Call((IMethod)method) {
 						Arguments = { left(), right() }
-					}, method.ReturnType);
+					}, isLiftedToNull != 0 ? NullableType.Create(method.Compilation, method.ReturnType) : method.ReturnType);
 				default:
 					return (null, SpecialType.UnknownType);
 			}
@@ -729,13 +730,12 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			var (right, rightType) = ConvertInstruction(invocation.Arguments[1]);
 			if (right == null)
 				return (null, SpecialType.UnknownType);
-			if (invocation.Arguments.Count == 4 && invocation.Arguments[2].MatchLdcI4(out var isLifted) && MatchGetMethodFromHandle(invocation.Arguments[3], out var method))
+			if (invocation.Arguments.Count == 4 && invocation.Arguments[2].MatchLdcI4(out var isLiftedToNull) && MatchGetMethodFromHandle(invocation.Arguments[3], out var method))
 			{
-				if (isLifted != 0)
-				{
+				bool isLifted = NullableType.IsNullable(leftType);
+				if (isLifted)
 					method = CSharpOperators.LiftUserDefinedOperator((IMethod)method);
-				}
-				return (() => new Call((IMethod)method) { Arguments = { left(), right() } }, method.ReturnType);
+				return (() => new Call((IMethod)method) { Arguments = { left(), right() } }, isLiftedToNull != 0 ? NullableType.Create(method.Compilation, method.ReturnType) : method.ReturnType);
 			}
 			var rr = resolver.ResolveBinaryOperator(kind.ToBinaryOperatorType(), new ResolveResult(leftType), new ResolveResult(rightType)) as OperatorResolveResult;
 			if (rr != null && !rr.IsError && rr.UserDefinedOperatorMethod != null)
@@ -979,15 +979,16 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						Arguments = { left(), right() }
 					}, method.ReturnType);
 				case 4:
-					if (!invocation.Arguments[2].MatchLdcI4(out var isLifted))
+					if (!invocation.Arguments[2].MatchLdcI4(out var isLiftedToNull))
 						return (null, SpecialType.UnknownType);
 					if (!MatchGetMethodFromHandle(invocation.Arguments[3], out method))
 						return (null, SpecialType.UnknownType);
-					if (isLifted != 0)
+					bool isLifted = NullableType.IsNullable(leftType);
+					if (isLifted)
 						method = CSharpOperators.LiftUserDefinedOperator((IMethod)method);
 					return (() => new Call((IMethod)method) {
 						Arguments = { left(), right() }
-					}, method.ReturnType);
+					}, isLiftedToNull != 0 ? NullableType.Create(method.Compilation, method.ReturnType) : method.ReturnType);
 				default:
 					return (null, SpecialType.UnknownType);
 			}
@@ -1290,7 +1291,8 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			{
 				case 1:
 					ILInstruction left;
-					switch (argumentType.GetStackType())
+					var underlyingType = NullableType.GetUnderlyingType(argumentType);
+					switch (underlyingType.GetStackType())
 					{
 						case StackType.I4:
 							left = new LdcI4(0);
@@ -1306,6 +1308,9 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 							break;
 						case StackType.F8:
 							left = new LdcF8(0);
+							break;
+						case StackType.O when underlyingType.IsKnownType(KnownTypeCode.Decimal):
+							left = new LdcDecimal(0);
 							break;
 						default:
 							return (null, SpecialType.UnknownType);

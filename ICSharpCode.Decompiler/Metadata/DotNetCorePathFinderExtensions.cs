@@ -17,8 +17,6 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 using System.Text.RegularExpressions;
@@ -65,7 +63,7 @@ namespace ICSharpCode.Decompiler.Metadata
 					var blobReader = reader.GetBlobReader(attribute.Value);
 					if (blobReader.ReadUInt16() == 0x0001)
 					{
-						return blobReader.ReadSerializedString();
+						return blobReader.ReadSerializedString()?.Replace(" ", "");
 					}
 				}
 				catch (BadImageFormatException)
@@ -132,16 +130,20 @@ namespace ICSharpCode.Decompiler.Metadata
 				 */
 				var pathMatch = Regex.Match(assemblyPath, PathPattern,
 					RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.ExplicitCapture);
+				string version;
 				if (pathMatch.Success)
 				{
 					var type = pathMatch.Groups["type"].Value;
-					var version = pathMatch.Groups["version"].Value;
+					version = pathMatch.Groups["version"].Value;
 					if (string.IsNullOrEmpty(version))
 						version = reader.MetadataVersion;
+					if (string.IsNullOrEmpty(version))
+						version = "4.0";
+					version = version.TrimStart('v');
 
 					if (type == "Microsoft.NET" || type == ".NETFramework")
 					{
-						return $".NETFramework,Version=v{version.TrimStart('v').Substring(0, 3)}";
+						return $".NETFramework,Version=v{version.Substring(0, Math.Min(3, version.Length))}";
 					}
 					else if (type.IndexOf("netcore", StringComparison.OrdinalIgnoreCase) >= 0)
 					{
@@ -154,7 +156,11 @@ namespace ICSharpCode.Decompiler.Metadata
 				}
 				else
 				{
-					return $".NETFramework,Version={reader.MetadataVersion.Substring(0, 4)}";
+					version = reader.MetadataVersion;
+					if (string.IsNullOrEmpty(version))
+						version = "4.0";
+					version = version.TrimStart('v');
+					return $".NETFramework,Version=v{version.Substring(0, Math.Min(3, version.Length))}";
 				}
 			}
 
@@ -179,68 +185,42 @@ namespace ICSharpCode.Decompiler.Metadata
 			var refPathMatch = Regex.Match(assemblyPath, RefPathPattern, RegexOptions.IgnoreCase | RegexOptions.Compiled);
 			return refPathMatch.Success;
 		}
-	}
 
-	public class ReferenceLoadInfo
-	{
-		readonly Dictionary<string, UnresolvedAssemblyNameReference> loadedAssemblyReferences = new Dictionary<string, UnresolvedAssemblyNameReference>();
-
-		public void AddMessage(string fullName, MessageKind kind, string message)
+		public static string DetectRuntimePack(this PEFile assembly)
 		{
-			lock (loadedAssemblyReferences)
+			if (assembly is null)
 			{
-				if (!loadedAssemblyReferences.TryGetValue(fullName, out var referenceInfo))
-				{
-					referenceInfo = new UnresolvedAssemblyNameReference(fullName);
-					loadedAssemblyReferences.Add(fullName, referenceInfo);
-				}
-				referenceInfo.Messages.Add((kind, message));
+				throw new ArgumentNullException(nameof(assembly));
 			}
-		}
 
-		public void AddMessageOnce(string fullName, MessageKind kind, string message)
-		{
-			lock (loadedAssemblyReferences)
+			var metadata = assembly.Metadata;
+
+			foreach (var r in metadata.AssemblyReferences)
 			{
-				if (!loadedAssemblyReferences.TryGetValue(fullName, out var referenceInfo))
-				{
-					referenceInfo = new UnresolvedAssemblyNameReference(fullName);
-					loadedAssemblyReferences.Add(fullName, referenceInfo);
-					referenceInfo.Messages.Add((kind, message));
-				}
-				else
-				{
-					var lastMsg = referenceInfo.Messages.LastOrDefault();
-					if (kind != lastMsg.Item1 && message != lastMsg.Item2)
-						referenceInfo.Messages.Add((kind, message));
-				}
-			}
-		}
+				var reference = metadata.GetAssemblyReference(r);
 
-		public bool TryGetInfo(string fullName, out UnresolvedAssemblyNameReference info)
-		{
-			lock (loadedAssemblyReferences)
-			{
-				return loadedAssemblyReferences.TryGetValue(fullName, out info);
-			}
-		}
+				if (reference.PublicKeyOrToken.IsNil)
+					continue;
 
-		public IReadOnlyList<UnresolvedAssemblyNameReference> Entries {
-			get {
-				lock (loadedAssemblyReferences)
+				if (metadata.StringComparer.Equals(reference.Name, "WindowsBase"))
 				{
-					return loadedAssemblyReferences.Values.ToList();
+					return "Microsoft.WindowsDesktop.App";
 				}
-			}
-		}
 
-		public bool HasErrors {
-			get {
-				lock (loadedAssemblyReferences)
+				if (metadata.StringComparer.Equals(reference.Name, "PresentationFramework"))
 				{
-					return loadedAssemblyReferences.Any(i => i.Value.HasErrors);
+					return "Microsoft.WindowsDesktop.App";
 				}
+
+				if (metadata.StringComparer.Equals(reference.Name, "PresentationCore"))
+				{
+					return "Microsoft.WindowsDesktop.App";
+				}
+
+				// TODO add support for ASP.NET Core
 			}
+
+			return "Microsoft.NETCore.App";
 		}
 	}
 }
